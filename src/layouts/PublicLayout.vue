@@ -15,6 +15,16 @@
 <script setup lang="ts">
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppFooter from '@/components/layout/AppFooter.vue'
+import { onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
+
+const authStore = useAuthStore()
+
+onMounted(() => {
+  authStore.initialize().catch((error) => {
+    console.error('Error al inicializar sesión:', error)
+  })
+})
 </script>
 
 <style scoped>
