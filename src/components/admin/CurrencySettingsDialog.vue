@@ -4,7 +4,8 @@ import { computed, ref, watch } from 'vue'
 import {
   getCurrencySettings,
   saveCurrencySettings,
-} from '@/api/settings.ts'
+  saveStoreWhatsAppNumber,
+} from '@/api/settings'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
@@ -25,11 +26,33 @@ const dialog = computed({
 
 const usdRate = ref<number | null>(null)
 const eurRate = ref<number | null>(null)
+const whatsappNumber = ref('')
 
 const loading = ref(false)
-const saving = ref(false)
-const errorMessage = ref('')
-const successMessage = ref('')
+const savingRates = ref(false)
+const savingWhatsApp = ref(false)
+
+const ratesError = ref('')
+const ratesSuccess = ref('')
+const whatsappError = ref('')
+const whatsappSuccess = ref('')
+const loadError = ref('')
+
+const whatsappValid = computed(() => {
+  const normalized = whatsappNumber.value.replace(/[\s()+-]/g, '')
+
+  return (
+    normalized === '' ||
+    /^[1-9][0-9]{7,14}$/.test(normalized)
+  )
+})
+
+const busy = computed(
+  () =>
+    loading.value ||
+    savingRates.value ||
+    savingWhatsApp.value,
+)
 
 watch(
   () => props.modelValue,
@@ -37,16 +60,20 @@ watch(
     if (!open || !authStore.isAdmin) return
 
     loading.value = true
-    errorMessage.value = ''
-    successMessage.value = ''
+    loadError.value = ''
+    ratesError.value = ''
+    ratesSuccess.value = ''
+    whatsappError.value = ''
+    whatsappSuccess.value = ''
 
     try {
       const settings = await getCurrencySettings()
 
       usdRate.value = settings.usd_to_cup
       eurRate.value = settings.eur_to_cup
+      whatsappNumber.value = settings.whatsapp_number || ''
     } catch (error) {
-      errorMessage.value =
+      loadError.value =
         error instanceof Error
           ? error.message
           : 'No se pudo cargar la configuración.'
@@ -56,8 +83,11 @@ watch(
   },
 )
 
-async function save() {
-  if (!authStore.isAdmin) return
+async function saveRates() {
+  if (!authStore.isAdmin || busy.value) return
+
+  ratesError.value = ''
+  ratesSuccess.value = ''
 
   if (
     usdRate.value == null ||
@@ -67,13 +97,11 @@ async function save() {
     usdRate.value <= 0 ||
     eurRate.value <= 0
   ) {
-    errorMessage.value = 'Introduce dos tasas válidas.'
+    ratesError.value = 'Introduce dos tasas válidas.'
     return
   }
 
-  saving.value = true
-  errorMessage.value = ''
-  successMessage.value = ''
+  savingRates.value = true
 
   try {
     await saveCurrencySettings(
@@ -81,30 +109,78 @@ async function save() {
       eurRate.value,
     )
 
-    successMessage.value = 'Tasas guardadas correctamente.'
+    ratesSuccess.value = 'Tasas guardadas correctamente.'
     emit('saved')
   } catch (error) {
-    errorMessage.value =
+    ratesError.value =
       error instanceof Error
         ? error.message
         : 'No se pudieron guardar las tasas.'
   } finally {
-    saving.value = false
+    savingRates.value = false
+  }
+}
+
+async function saveWhatsApp() {
+  if (!authStore.isAdmin || busy.value) return
+
+  whatsappError.value = ''
+  whatsappSuccess.value = ''
+
+  if (!whatsappValid.value) {
+    whatsappError.value =
+      'Introduce un número internacional válido.'
+    return
+  }
+
+  savingWhatsApp.value = true
+
+  try {
+    const savedNumber = await saveStoreWhatsAppNumber(
+      whatsappNumber.value,
+    )
+
+    whatsappNumber.value = savedNumber || ''
+
+    whatsappSuccess.value = savedNumber
+      ? 'Número de WhatsApp guardado correctamente.'
+      : 'WhatsApp desactivado correctamente.'
+
+    emit('saved')
+  } catch (error) {
+    whatsappError.value =
+      error instanceof Error
+        ? error.message
+        : 'No se pudo guardar el número de WhatsApp.'
+  } finally {
+    savingWhatsApp.value = false
   }
 }
 </script>
 
 <template>
-  <v-dialog v-model="dialog" max-width="520" scrollable>
-    <v-card class="settings-dialog" rounded="xl" elevation="8">
+  <v-dialog
+    v-model="dialog"
+    max-width="560"
+    scrollable
+  >
+    <v-card
+      class="settings-dialog"
+      rounded="xl"
+      elevation="8"
+    >
+      <!-- Encabezado -->
       <div class="settings-header">
         <div class="settings-icon">
-          <v-icon icon="mdi-currency-usd" size="26" />
+          <v-icon
+            icon="mdi-cog-outline"
+            size="23"
+          />
         </div>
 
-        <div class="flex-grow-1">
-          <h2>Configuración de monedas</h2>
-          <p>Administra las tasas de conversión de la tienda.</p>
+        <div class="settings-header-text">
+          <h2>Configuración de la tienda</h2>
+          <p>Administra el contacto y las tasas de cambio.</p>
         </div>
 
         <v-btn
@@ -112,168 +188,382 @@ async function save() {
           variant="text"
           size="small"
           aria-label="Cerrar configuración"
+          :disabled="savingRates || savingWhatsApp"
           @click="dialog = false"
         />
       </div>
 
       <v-divider />
 
-      <v-card-text class="pa-6">
+      <v-card-text class="settings-body">
         <v-alert
-          v-if="errorMessage"
+          v-if="loadError"
           type="error"
           variant="tonal"
+          density="compact"
           rounded="lg"
           class="mb-4"
         >
-          {{ errorMessage }}
+          {{ loadError }}
         </v-alert>
 
-        <v-alert
-          v-if="successMessage"
-          type="success"
-          variant="tonal"
-          rounded="lg"
-          class="mb-4"
-        >
-          {{ successMessage }}
-        </v-alert>
-
-        <v-form @submit.prevent="save">
-          <div class="section-heading mb-5">
-            <v-icon icon="mdi-swap-horizontal" color="primary" />
-            <span>Tasas de cambio</span>
-          </div>
-
-          <div class="rate-field mb-4">
-            <div class="rate-label">
-              <span>1 dólar estadounidense (USD)</span>
-              <v-chip size="small" variant="tonal" color="primary">
-                USD
-              </v-chip>
+        <!-- WhatsApp -->
+        <section class="settings-section">
+          <div class="section-heading">
+            <div class="section-icon whatsapp-icon">
+              <v-icon
+                icon="mdi-whatsapp"
+                size="20"
+              />
             </div>
 
-            <v-text-field
-              v-model.number="usdRate"
-              type="number"
-              min="0.0001"
-              step="any"
-              variant="outlined"
-              density="comfortable"
-              rounded="lg"
-              suffix="CUP"
-              placeholder="Introduce la tasa"
-              hide-details
-              :disabled="loading || saving"
-            />
-          </div>
-
-          <div class="rate-field mb-4">
-            <div class="rate-label">
-              <span>1 euro (EUR)</span>
-              <v-chip size="small" variant="tonal" color="primary">
-                EUR
-              </v-chip>
+            <div>
+              <h3>WhatsApp de la tienda</h3>
+              <p>Recibe las consultas de tus clientes.</p>
             </div>
-
-            <v-text-field
-              v-model.number="eurRate"
-              type="number"
-              min="0.0001"
-              step="any"
-              variant="outlined"
-              density="comfortable"
-              rounded="lg"
-              suffix="CUP"
-              placeholder="Introduce la tasa"
-              hide-details
-              :disabled="loading || saving"
-            />
           </div>
 
-          <div class="settings-note">
-            <v-icon
-              icon="mdi-information-outline"
-              color="primary"
-              size="20"
-            />
-            <span>
-              Estas tasas se utilizarán para calcular los precios
-              al crear o editar productos. No modificarán
-              automáticamente los precios ya publicados.
-            </span>
-          </div>
-
-          <v-btn
-            type="submit"
-            color="#087df1"
-            variant="flat"
+          <v-alert
+            v-if="whatsappError"
+            type="error"
+            variant="tonal"
+            density="compact"
             rounded="lg"
-            size="large"
-            block
-            class="mt-6"
-            :loading="saving"
-            :disabled="loading || !authStore.isAdmin"
+            class="mb-3"
           >
-            <v-icon start icon="mdi-content-save-outline" />
-            Guardar configuración
-          </v-btn>
-        </v-form>
+            {{ whatsappError }}
+          </v-alert>
+
+          <v-alert
+            v-if="whatsappSuccess"
+            type="success"
+            variant="tonal"
+            density="compact"
+            rounded="lg"
+            class="mb-3"
+          >
+            {{ whatsappSuccess }}
+          </v-alert>
+
+          <v-form @submit.prevent="saveWhatsApp">
+            <div class="field-label">
+              Número de WhatsApp
+            </div>
+
+            <v-text-field
+              v-model="whatsappNumber"
+              variant="outlined"
+              density="compact"
+              rounded="lg"
+              placeholder="Ej. 5351234567"
+              prepend-inner-icon="mdi-phone-outline"
+              inputmode="tel"
+              autocomplete="tel"
+              hide-details
+              :error="!whatsappValid"
+              :disabled="busy"
+            />
+
+            <p class="field-help">
+              Introduce el código de país y el número,
+              sin el signo +. Déjalo vacío para desactivar
+              las consultas.
+            </p>
+
+            <v-btn
+              type="submit"
+              color="#19B56B"
+              variant="flat"
+              rounded="lg"
+              size="small"
+              class="save-button text-white"
+              prepend-icon="mdi-content-save-outline"
+              :loading="savingWhatsApp"
+              :disabled="
+                busy ||
+                !whatsappValid ||
+                !authStore.isAdmin ||
+                !!loadError
+              "
+            >
+              Guardar WhatsApp
+            </v-btn>
+          </v-form>
+        </section>
+
+        <v-divider class="section-divider" />
+
+        <!-- Monedas -->
+        <section class="settings-section">
+          <div class="section-heading">
+            <div class="section-icon currency-icon">
+              <v-icon
+                icon="mdi-currency-usd"
+                size="20"
+              />
+            </div>
+
+            <div>
+              <h3>Tasas de cambio</h3>
+              <p>Conversión de USD y EUR a pesos cubanos.</p>
+            </div>
+          </div>
+
+          <v-alert
+            v-if="ratesError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            rounded="lg"
+            class="mb-3"
+          >
+            {{ ratesError }}
+          </v-alert>
+
+          <v-alert
+            v-if="ratesSuccess"
+            type="success"
+            variant="tonal"
+            density="compact"
+            rounded="lg"
+            class="mb-3"
+          >
+            {{ ratesSuccess }}
+          </v-alert>
+
+          <v-form @submit.prevent="saveRates">
+            <div class="rates-grid">
+              <div class="rate-field">
+                <div class="rate-label">
+                  <span>Dólar estadounidense</span>
+
+                  <v-chip
+                    size="x-small"
+                    variant="tonal"
+                    color="primary"
+                  >
+                    USD
+                  </v-chip>
+                </div>
+
+                <v-text-field
+                  v-model.number="usdRate"
+                  type="number"
+                  min="0.0001"
+                  step="any"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  suffix="CUP"
+                  placeholder="Tasa USD"
+                  hide-details
+                  :disabled="busy"
+                />
+              </div>
+
+              <div class="rate-field">
+                <div class="rate-label">
+                  <span>Euro</span>
+
+                  <v-chip
+                    size="x-small"
+                    variant="tonal"
+                    color="primary"
+                  >
+                    EUR
+                  </v-chip>
+                </div>
+
+                <v-text-field
+                  v-model.number="eurRate"
+                  type="number"
+                  min="0.0001"
+                  step="any"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  suffix="CUP"
+                  placeholder="Tasa EUR"
+                  hide-details
+                  :disabled="busy"
+                />
+              </div>
+            </div>
+
+            <div class="settings-note">
+              <v-icon
+                icon="mdi-information-outline"
+                size="17"
+                color="primary"
+              />
+
+              <span>
+                Las nuevas tasas se aplicarán al crear o editar
+                productos. Los precios publicados no cambian
+                automáticamente.
+              </span>
+            </div>
+
+            <v-btn
+              type="submit"
+              color="#087df1"
+              variant="flat"
+              rounded="lg"
+              size="small"
+              class="save-button"
+              prepend-icon="mdi-content-save-outline"
+              :loading="savingRates"
+              :disabled="
+                busy ||
+                !authStore.isAdmin ||
+                !!loadError
+              "
+            >
+              Guardar tasas
+            </v-btn>
+          </v-form>
+        </section>
       </v-card-text>
+
+      <v-divider />
+
+      <div class="settings-footer">
+        <v-icon
+          icon="mdi-shield-check-outline"
+          size="15"
+        />
+
+        Configuración exclusiva de administradores
+      </div>
     </v-card>
   </v-dialog>
 </template>
 
 <style scoped>
 .settings-dialog {
-  background: #ffffff;
+  background: #fff;
 }
 
 .settings-header {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 24px;
-}
-
-.settings-header h2 {
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: -0.4px;
-  color: #082b58;
-}
-
-.settings-header p {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #64748b;
-  line-height: 1.5;
+  gap: 12px;
+  padding: 17px 20px;
 }
 
 .settings-icon {
-  width: 48px;
-  height: 48px;
-  flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 14px;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
   background: #eaf3ff;
   color: #087df1;
+}
+
+.settings-header-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-header h2 {
+  margin: 0;
+  color: #082b58;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+
+.settings-header p {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.settings-body {
+  padding: 20px !important;
+}
+
+.settings-section {
+  width: 100%;
 }
 
 .section-heading {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 15px;
-  font-weight: 750;
+  margin-bottom: 17px;
+}
+
+.section-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 37px;
+  height: 37px;
+  border-radius: 10px;
+}
+
+.whatsapp-icon {
+  color: #159b5b;
+  background: #e8f9ef;
+}
+
+.currency-icon {
+  color: #087df1;
+  background: #eaf3ff;
+}
+
+.section-heading h3 {
+  margin: 0;
   color: #082b58;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.section-heading p {
+  margin: 3px 0 0;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.field-label {
+  margin-bottom: 7px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.field-help {
+  margin: 7px 0 13px;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.save-button {
+  text-transform: none;
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+.section-divider {
+  margin: 23px 0;
+}
+
+.rates-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .rate-field {
-  padding: 16px;
+  min-width: 0;
+  padding: 12px;
   border: 1px solid #e5ecf5;
-  border-radius: 14px;
+  border-radius: 12px;
   background: #fafcff;
 }
 
@@ -281,22 +571,63 @@ async function save() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
-  font-size: 13px;
-  font-weight: 650;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
   color: #334155;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .settings-note {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 14px;
-  border-radius: 12px;
+  gap: 9px;
+  margin: 14px 0;
+  padding: 11px 12px;
+  border-radius: 10px;
   background: #f0f7ff;
-  color: #475569;
-  font-size: 12px;
-  line-height: 1.6;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.settings-note .v-icon {
+  flex-shrink: 0;
+}
+
+.settings-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 12px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 600;
+  background: #fafcff;
+}
+
+@media (max-width: 600px) {
+  .settings-header {
+    padding: 14px;
+    gap: 9px;
+  }
+
+  .settings-header h2 {
+    font-size: 15px;
+  }
+
+  .settings-body {
+    padding: 15px !important;
+  }
+
+  .rates-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .section-divider {
+    margin: 19px 0;
+  }
 }
 </style>

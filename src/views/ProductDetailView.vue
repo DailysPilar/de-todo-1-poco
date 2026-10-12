@@ -13,7 +13,21 @@ import {
   getProductImagesWithUrls,
   type ProductImageWithUrl,
 } from '@/api/productImages'
+import { getStoreWhatsAppNumber } from '@/api/settings'
+import { buildProductWhatsAppUrl } from '@/lib/whatsapp'
 
+const whatsappNumber = ref<string | null>(null)
+
+const whatsappUrl = computed(() => {
+  if (!product.value || !whatsappNumber.value || !product.value.available) {
+    return null
+  }
+
+  return buildProductWhatsAppUrl(
+    whatsappNumber.value,
+    product.value,
+  )
+})
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
@@ -83,19 +97,29 @@ async function loadProductImages(productId: string) {
 }
 
 async function refreshProduct() {
-  const updatedProduct = await getProductBySlugFromApi(
-    String(route.params.slug),
-  )
+  const rawSlug = route.params.slug
+  const slug =
+    typeof rawSlug === 'string'
+      ? rawSlug
+      : Array.isArray(rawSlug)
+        ? (rawSlug[0] ?? '')
+        : ''
 
-  product.value = updatedProduct
-  productImages.value = []
+  if (!slug) return
 
-  if (updatedProduct) {
-    try {
-      await loadProductImages(updatedProduct.id)
-    } catch (imageError) {
-      console.error('Error cargando fotografías:', imageError)
+  try {
+    const updatedProduct = await getProductBySlugFromApi(slug)
+    product.value = updatedProduct
+
+    if (updatedProduct) {
+      try {
+        await loadProductImages(updatedProduct.id)
+      } catch (imageError) {
+        console.error('Error cargando fotografías:', imageError)
+      }
     }
+  } catch (err) {
+    console.error('Error refrescando producto:', err)
   }
 }
 
@@ -131,12 +155,26 @@ async function confirmDeleteProduct() {
 
 watch(
   () => route.params.slug,
-  async (slug, _oldSlug, onCleanup) => {
+  async (newSlug, _oldSlug, onCleanup) => {
     let cancelled = false
 
     onCleanup(() => {
       cancelled = true
     })
+
+    const slug =
+      typeof newSlug === 'string'
+        ? newSlug
+        : Array.isArray(newSlug)
+          ? (newSlug[0] ?? '')
+          : ''
+
+    if (!slug) {
+      product.value = null
+      productImages.value = []
+      loading.value = false
+      return
+    }
 
     loading.value = true
     error.value = ''
@@ -145,30 +183,37 @@ watch(
     selectedImage.value = 0
 
     try {
-      const loadedProduct = await getProductBySlugFromApi(
-        String(slug),
-      )
+      const [fetchedProduct, fetchedWhatsapp] = await Promise.all([
+        getProductBySlugFromApi(slug),
+        getStoreWhatsAppNumber().catch((whatsappErr) => {
+          console.error('Error cargando WhatsApp:', whatsappErr)
+          return null
+        }),
+      ])
 
       if (cancelled) return
 
-      product.value = loadedProduct
+      whatsappNumber.value = fetchedWhatsapp
+      product.value = fetchedProduct
 
-      if (loadedProduct) {
+      if (fetchedProduct) {
         try {
-          const images = await getProductImagesWithUrls(
-            loadedProduct.id,
-          )
-
+          const images = await getProductImagesWithUrls(fetchedProduct.id)
           if (!cancelled) {
             productImages.value = images
+            selectedImage.value = 0
           }
         } catch (imageError) {
           console.error('Error cargando fotografías:', imageError)
         }
       }
-    } catch {
+    } catch (loadError) {
       if (!cancelled) {
-        error.value = 'No pudimos cargar este producto.'
+        console.error('Error cargando producto:', loadError)
+        error.value =
+          loadError instanceof Error
+            ? loadError.message
+            : 'No se pudo cargar la información del producto.'
       }
     } finally {
       if (!cancelled) {
@@ -482,14 +527,22 @@ watch(
             block
             class="whatsapp-button mt-4 text-white"
             prepend-icon="mdi-whatsapp"
-            disabled
+            :href="whatsappUrl || undefined"
+            :disabled="!whatsappUrl"
+            target="_blank"
+            rel="noopener noreferrer"
           >
             Consultar por WhatsApp
           </v-btn>
+          <p v-if="!whatsappNumber" class="contact-note">
+            Las consultas por WhatsApp todavía no están configuradas.
+          </p>
 
-          <p class="contact-note">
-            Activaremos las consultas cuando configuremos
-            el número de WhatsApp de la tienda.
+          <p
+            v-else-if="!product.available"
+            class="contact-note"
+          >
+            Este producto se encuentra agotado.
           </p>
         </div>
       </v-col>

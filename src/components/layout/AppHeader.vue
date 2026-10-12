@@ -200,9 +200,8 @@ function openWhatsApp() {
             <v-divider class="my-1" />
             
             <v-list-item
-              prepend-icon="mdi-currency-usd"
-              title="Configuración de monedas"
-              subtitle="Tasas USD y EUR"
+              title="Configuración de la tienda"
+              prepend-icon="mdi-cog-outline"
               @click="currencySettingsDialog = true"
             />
 
