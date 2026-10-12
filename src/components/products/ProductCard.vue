@@ -1,11 +1,38 @@
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { DatabaseProduct } from '@/types/databaseProduct'
+import { getProductMainImageUrl } from '@/api/productImages'
 
 const props = defineProps<{
   product: DatabaseProduct
 }>()
+
+const imageUrl = ref<string | null>(null)
+
+watch(
+  () => props.product.id,
+  async (productId, _oldId, onCleanup) => {
+    let cancelled = false
+
+    onCleanup(() => {
+      cancelled = true
+    })
+
+    imageUrl.value = null
+
+    try {
+      const url = await getProductMainImageUrl(productId)
+
+      if (!cancelled) {
+        imageUrl.value = url
+      }
+    } catch (error) {
+      console.error('Error cargando imagen:', error)
+    }
+  },
+  { immediate: true },
+)
 
 function formatPrice(value: number) {
   return new Intl.NumberFormat('es-CU', {
@@ -14,78 +41,136 @@ function formatPrice(value: number) {
   }).format(value)
 }
 
-const hasPrice = computed(
-  () =>
-    props.product.price_cup !== null ||
-    props.product.price_usd !== null,
-)
+interface DisplayPrice {
+  value: number
+  currency: 'CUP' | 'USD' | 'EUR'
+}
+
+const prices = computed<DisplayPrice[]>(() => {
+  const result: DisplayPrice[] = []
+
+  if (props.product.price_cup !== null) {
+    result.push({
+      value: props.product.price_cup,
+      currency: 'CUP',
+    })
+  }
+
+  if (props.product.price_usd !== null) {
+    result.push({
+      value: props.product.price_usd,
+      currency: 'USD',
+    })
+  }
+
+  if (props.product.price_eur !== null) {
+    result.push({
+      value: props.product.price_eur,
+      currency: 'EUR',
+    })
+  }
+
+  return result
+})
+
+const mainPrice = computed(() => prices.value[0] ?? null)
+const secondaryPrices = computed(() => prices.value.slice(1))
 </script>
 
 <template>
   <v-card
-    class="product-card h-100"
+    class="product-card"
     rounded="xl"
     elevation="0"
     :to="`/producto/${product.slug}`"
   >
+    <!-- Fotografía -->
     <div class="product-image">
-      <div class="image-placeholder">
+      <v-img
+        v-if="imageUrl"
+        :src="imageUrl"
+        :alt="product.name"
+        cover
+        class="product-photo"
+      />
+
+      <div v-else class="image-placeholder">
         <v-icon
           icon="mdi-image-outline"
-          size="55"
+          size="48"
           color="grey-lighten-1"
         />
       </div>
 
       <v-chip
-        v-if="!product.available"
-        class="availability-chip"
-        color="error"
-        size="small"
-      >
-        Agotado
-      </v-chip>
-
-      <v-chip
         v-if="product.status === 'draft'"
         class="status-chip"
         color="warning"
-        size="small"
+        size="x-small"
       >
         Borrador
       </v-chip>
 
       <v-chip
-        v-if="product.status === 'archived'"
+        v-else-if="product.status === 'archived'"
         class="status-chip"
         color="grey"
-        size="small"
+        size="x-small"
       >
         Archivado
       </v-chip>
     </div>
 
-    <v-card-text>
-      <h3 class="product-name">
+    <!-- Información -->
+    <div class="product-content">
+      <!-- Disponibilidad -->
+      <div
+        class="availability"
+        :class="{
+          'availability--unavailable': !product.available,
+        }"
+      >
+        <span class="availability-dot" />
+
+        <span>
+          {{ product.available ? 'Disponible' : 'Agotado' }}
+        </span>
+      </div>
+
+      <!-- Nombre -->
+      <h3 class="product-name" :title="product.name">
         {{ product.name }}
       </h3>
 
-      <div class="product-prices mt-3">
-        <template v-if="hasPrice">
-          <div
-            v-if="product.price_cup !== null"
-            class="product-price"
-          >
-            {{ formatPrice(product.price_cup) }}
-            <span>CUP</span>
+      <!-- Precios -->
+      <div class="price-section">
+        <template v-if="mainPrice">
+          <div class="main-price">
+            <span class="main-price-value">
+              {{ formatPrice(mainPrice.value) }}
+            </span>
+
+            <span class="main-price-currency">
+              {{ mainPrice.currency }}
+            </span>
           </div>
 
           <div
-            v-if="product.price_usd !== null"
-            class="product-price"
+            v-if="secondaryPrices.length"
+            class="secondary-prices"
           >
-            {{ formatPrice(product.price_usd) }}
-            <span>USD</span>
+            <span class="secondary-label">
+              También:
+            </span>
+
+            <span
+              v-for="price in secondaryPrices"
+              :key="price.currency"
+              class="secondary-price"
+            >
+              {{ formatPrice(price.value) }}
+              {{ price.currency }}
+            </span>
           </div>
         </template>
 
@@ -94,95 +179,247 @@ const hasPrice = computed(
         </div>
       </div>
 
-      <v-chip
-        class="mt-3"
-        :color="product.available ? 'success' : 'error'"
-        variant="tonal"
-        size="small"
-      >
-        {{ product.available ? 'Disponible' : 'Agotado' }}
-      </v-chip>
-    </v-card-text>
+      <!-- Acción -->
+      <div class="product-action">
+        <span>Ver detalles</span>
 
-    <v-card-actions class="px-4 pb-4">
-      <v-btn
-        color="primary"
-        variant="tonal"
-        block
-        rounded="lg"
-      >
-        Ver detalles
-        <v-icon end icon="mdi-arrow-right" />
-      </v-btn>
-    </v-card-actions>
+        <v-icon
+          icon="mdi-arrow-up-right"
+          size="18"
+        />
+      </div>
+    </div>
   </v-card>
 </template>
 
 <style scoped>
 .product-card {
-  border: 1px solid #e8edf5;
-  transition: all 0.25s ease;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
   overflow: hidden;
+  border: 1px solid #e5ecf5;
+  background: #fff;
+  text-decoration: none;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
 }
 
 .product-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 12px 30px rgba(8, 43, 88, 0.08);
+  border-color: #bfd8f7;
+  box-shadow: 0 12px 30px rgba(8, 43, 88, 0.09);
 }
+
+/* Fotografía */
 
 .product-image {
   position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
   background: #f5f8fc;
 }
 
+.product-photo {
+  width: 100%;
+  height: 100%;
+  transition: transform 0.35s ease;
+}
+
+.product-card:hover .product-photo {
+  transform: scale(1.04);
+}
+
 .image-placeholder {
-  height: 210px;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.availability-chip {
-  position: absolute;
-  top: 12px;
-  left: 12px;
+  width: 100%;
+  height: 100%;
 }
 
 .status-chip {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
 }
 
-.product-name {
-  font-size: 16px;
-  font-weight: 700;
-  color: #082b58;
-  line-height: 1.5;
-  min-height: 48px;
-}
+/* Contenido */
 
-.product-prices {
+.product-content {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  min-height: 32px;
+  flex: 1;
+  gap: 10px;
+  padding: 16px;
 }
 
-.product-price {
-  font-size: 22px;
-  font-weight: 800;
+/* Disponibilidad */
+
+.availability {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  color: #16a34a;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.availability-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #22c55e;
+}
+
+.availability--unavailable {
+  color: #dc2626;
+}
+
+.availability--unavailable .availability-dot {
+  background: #ef4444;
+}
+
+/* Nombre */
+
+.product-name {
+  color: #082b58;
+  font-size: 15px;
+  font-weight: 750;
+  line-height: 1.4;
+  letter-spacing: -0.2px;
+  margin: 0;
+
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+
+  min-height: 42px;
+}
+
+/* Precios */
+
+.price-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.main-price {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.main-price-value {
+  color: #082b58;
+  font-size: clamp(19px, 2vw, 25px);
+  font-weight: 850;
+  letter-spacing: -0.7px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.main-price-currency {
   color: #087df1;
+  font-size: 11px;
+  font-weight: 750;
 }
 
-.product-price span {
-  font-size: 13px;
-  font-weight: 600;
+.secondary-prices {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-width: 0;
+}
+
+.secondary-label {
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.secondary-price {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .consult-price {
-  font-size: 16px;
-  font-weight: 700;
   color: #087df1;
+  font-size: 16px;
+  font-weight: 750;
+}
+
+/* Botón visual */
+
+.product-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  margin-top: auto;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: #082b58;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.product-card:hover .product-action {
+  background: #087df1;
+}
+
+@media (max-width: 600px) {
+  .product-content {
+    padding: 12px;
+    gap: 8px;
+  }
+
+  .product-name {
+    font-size: 13px;
+    min-height: 37px;
+  }
+
+  .main-price-value {
+    font-size: 20px;
+  }
+
+  .main-price-currency {
+    font-size: 10px;
+  }
+
+  .secondary-price,
+  .secondary-label {
+    font-size: 10px;
+  }
+
+  .product-action {
+    min-height: 38px;
+    font-size: 11px;
+    padding: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-card,
+  .product-photo,
+  .product-action {
+    transition: none;
+  }
 }
 </style>

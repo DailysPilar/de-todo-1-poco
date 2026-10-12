@@ -196,7 +196,7 @@ const moreProductImages = [
 <style scoped>
 /* Sección general */
 .categories-section {
-  padding: 28px 0 44px;
+  padding: 28px 0 20px;
   background: #f5f8fc;
   scroll-margin-top: 95px;
 }
@@ -427,9 +427,9 @@ const moreProductImages = [
 
 /* Móviles: dos columnas */
 @media (max-width: 600px) {
-  .categories-section {
-    padding: 24px 0 36px;
-  }
+.categories-section {
+  padding: 24px 0 16px;
+}
 
   .section-heading {
     align-items: flex-end;

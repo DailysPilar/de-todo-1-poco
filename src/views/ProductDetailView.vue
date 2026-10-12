@@ -4,13 +4,36 @@ import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getProductBySlugFromApi } from '@/api/products'
 import type { DatabaseProduct } from '@/types/databaseProduct'
+import { useAuthStore } from '@/stores/auth'
+import ProductFormDialog from '@/components/products/ProductFormDialog.vue'
+import {
+  getProductImagesWithUrls,
+  type ProductImageWithUrl,
+} from '@/api/productImages'
 
 const route = useRoute()
+const authStore = useAuthStore()
+const editDialog = ref(false)
 
+async function refreshProduct() {
+  product.value = await getProductBySlugFromApi(
+    String(route.params.slug),
+  )
+
+  if (product.value) {
+    await loadProductImages(product.value.id)
+  }
+}
 const product = ref<DatabaseProduct | null>(null)
 const loading = ref(true)
 const error = ref('')
+const productImages = ref<ProductImageWithUrl[]>([])
+const selectedImage = ref(0)
 
+async function loadProductImages(productId: string) {
+  productImages.value = await getProductImagesWithUrls(productId)
+  selectedImage.value = 0
+}
 const prices = computed(() => {
   if (!product.value) return []
 
@@ -41,6 +64,15 @@ watch(
       product.value = await getProductBySlugFromApi(
         String(slug),
       )
+      productImages.value = []
+
+      if (product.value) {
+        try {
+          await loadProductImages(product.value.id)
+        } catch (error) {
+          console.error('Error cargando fotografías:', error)
+        }
+      }
     } catch {
       error.value = 'No pudimos cargar este producto.'
     } finally {
@@ -83,18 +115,55 @@ watch(
     <v-row v-else-if="product" class="ga-0">
       <!-- Galería: pendiente de conectar las fotografías -->
       <v-col cols="12" md="6" class="pr-md-6">
-        <v-card
-          class="product-gallery"
-          rounded="xl"
-          elevation="0"
-        >
-          <v-icon
-            icon="mdi-image-outline"
-            size="90"
-            color="grey-lighten-1"
-          />
-          <span>Fotografías próximamente</span>
-        </v-card>
+        <div class="product-gallery-wrapper">
+          <v-card
+            class="product-gallery"
+            rounded="xl"
+            elevation="0"
+          >
+            <v-img
+              v-if="productImages.length"
+              :src="productImages[selectedImage]?.url"
+              :alt="product.name"
+              width="100%"
+              height="420"
+              contain
+              class="main-product-image"
+            />
+
+            <template v-else>
+              <v-icon
+                icon="mdi-image-outline"
+                size="90"
+                color="grey-lighten-1"
+              />
+              <span>Sin fotografías disponibles</span>
+            </template>
+          </v-card>
+
+          <div
+            v-if="productImages.length > 1"
+            class="product-thumbnails mt-4"
+          >
+            <button
+              v-for="(image, index) in productImages"
+              :key="image.id"
+              type="button"
+              class="product-thumbnail"
+              :class="{ 'product-thumbnail--active': selectedImage === index }"
+              :aria-label="`Ver fotografía ${index + 1}`"
+              @click="selectedImage = index"
+            >
+              <v-img
+                :src="image.url"
+                :alt="`${product.name} - foto ${index + 1}`"
+                width="80"
+                height="80"
+                cover
+              />
+            </button>
+          </div>
+        </div>
       </v-col>
 
       <!-- Información -->
@@ -121,6 +190,17 @@ watch(
         <h1 class="product-title">
           {{ product.name }}
         </h1>
+        <v-btn
+            v-if="authStore.isAdmin"
+            color="primary"
+            variant="tonal"
+            rounded="lg"
+            prepend-icon="mdi-pencil-outline"
+            class="mt-4"
+            @click="editDialog = true"
+          >
+            Editar producto
+          </v-btn>
 
         <p class="product-intro mt-4">
           {{ product.description || 'Consulta los detalles de este producto.' }}
@@ -208,6 +288,12 @@ watch(
       Este producto no está disponible.
     </v-alert>
   </v-container>
+  <ProductFormDialog
+  v-if="authStore.isAdmin && product"
+  v-model="editDialog"
+  :product="product"
+  @saved="refreshProduct"
+/>
 </template>
 
 <style scoped>
@@ -310,5 +396,41 @@ watch(
   .price-item strong {
     font-size: 20px;
   }
+}
+.product-gallery-wrapper {
+  width: 100%;
+}
+
+.main-product-image {
+  border-radius: 18px;
+}
+
+.product-thumbnails {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 4px 2px 10px;
+}
+
+.product-thumbnail {
+  flex-shrink: 0;
+  width: 84px;
+  height: 84px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  background: white;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.product-thumbnail:hover {
+  border-color: #93c5fd;
+}
+
+.product-thumbnail--active {
+  border-color: #087df1;
+  box-shadow: 0 3px 12px rgba(8, 125, 241, 0.15);
 }
 </style>

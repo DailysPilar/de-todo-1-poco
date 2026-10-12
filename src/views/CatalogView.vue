@@ -73,6 +73,7 @@ const currencyOptions = [
   { title: 'Todas las monedas', value: 'all' },
   { title: 'CUP', value: 'CUP' },
   { title: 'USD', value: 'USD' },
+  { title: 'EUR', value: 'EUR' },
 ]
 
 const categoryOptions = computed(() => [
@@ -117,7 +118,9 @@ const filteredProducts = computed(() => {
       (selectedCurrency.value === 'CUP' &&
         product.price_cup !== null) ||
       (selectedCurrency.value === 'USD' &&
-        product.price_usd !== null)
+        product.price_usd !== null) ||
+      (selectedCurrency.value === 'EUR' &&
+        product.price_eur !== null)
 
     return (
       matchesSearch &&
