@@ -1,11 +1,42 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useProductsStore } from '@/stores/products'
 import ProductCard from '@/components/products/ProductCard.vue'
+import { useAuthStore } from '@/stores/auth'
+import ProductFormDialog from '@/components/products/ProductFormDialog.vue'
 
 const route = useRoute()
 const productsStore = useProductsStore()
+
+const authStore = useAuthStore()
+
+const productDialog = ref(false)
+const productSavedMessage = ref(false)
+
+onMounted(async () => {
+  try {
+    await productsStore.initialize()
+  } catch (error) {
+    console.error('Error cargando el catálogo:', error)
+  }
+})
+
+function openProductDialog() {
+  if (!authStore.isAdmin) return
+
+  productDialog.value = true
+}
+
+async function onProductSaved() {
+  productSavedMessage.value = true
+
+  try {
+    await productsStore.fetchProducts()
+  } catch (error) {
+    console.error('Error actualizando productos:', error)
+  }
+}
 
 const getSearchFromRoute = () => {
   const value = route.query.q
@@ -21,6 +52,20 @@ watch(
     search.value = getSearchFromRoute()
   },
 )
+
+watch(
+  () => authStore.isAdmin,
+  async () => {
+    productsStore.clearProducts()
+
+    try {
+      await productsStore.fetchProducts()
+    } catch (error) {
+      console.error('Error actualizando productos:', error)
+    }
+  },
+)
+
 const selectedCategory = ref<string | null>(null)
 const selectedCurrency = ref<string | null>(null)
 
@@ -58,7 +103,7 @@ const filteredProducts = computed(() => {
       .includes(search.value.trim().toLowerCase())
 
     const category = productsStore.categories.find(
-      (item) => item.id === product.categoryId,
+      (item) => item.id === product.category_id,
     )
 
     const matchesCategory =
@@ -69,9 +114,16 @@ const filteredProducts = computed(() => {
     const matchesCurrency =
       !selectedCurrency.value ||
       selectedCurrency.value === 'all' ||
-      product.currency === selectedCurrency.value
+      (selectedCurrency.value === 'CUP' &&
+        product.price_cup !== null) ||
+      (selectedCurrency.value === 'USD' &&
+        product.price_usd !== null)
 
-    return matchesSearch && matchesCategory && matchesCurrency
+    return (
+      matchesSearch &&
+      matchesCategory &&
+      matchesCurrency
+    )
   })
 })
 
@@ -142,17 +194,50 @@ function clearFilters() {
       </v-row>
     </v-card>
 
-    <div class="d-flex align-center justify-space-between mb-6">
-      <h2 class="text-h6 font-weight-bold">
-        Productos
-      </h2>
+    <div class="d-flex align-center justify-space-between flex-wrap ga-3 mb-6">
+      <div>
+        <h2 class="text-h6 font-weight-bold">
+          Productos
+        </h2>
 
-      <span class="text-medium-emphasis">
-        {{ filteredProducts.length }} resultados
-      </span>
+        <span class="text-medium-emphasis text-body-2">
+          {{ filteredProducts.length }} resultados
+        </span>
+      </div>
+
+      <v-btn
+        v-if="authStore.isAdmin"
+        color="primary"
+        variant="flat"
+        rounded="lg"
+        prepend-icon="mdi-plus"
+        @click="openProductDialog"
+      >
+        Añadir producto
+      </v-btn>
+    </div>
+    <v-alert
+      v-if="productsStore.error"
+      type="error"
+      variant="tonal"
+      class="mb-5"
+    >
+      No se pudo cargar el catálogo.
+      {{ productsStore.error }}
+    </v-alert>
+
+    <div
+      v-if="productsStore.loading"
+      class="d-flex justify-center py-12"
+    >
+      <v-progress-circular
+        indeterminate
+        color="primary"
+        size="42"
+      />
     </div>
 
-    <v-row v-if="filteredProducts.length">
+    <v-row v-if="!productsStore.loading && !productsStore.error && filteredProducts.length">
       <v-col
         v-for="product in filteredProducts"
         :key="product.id"
@@ -165,7 +250,7 @@ function clearFilters() {
     </v-row>
 
     <v-card
-      v-else
+      v-else-if="!productsStore.loading && !productsStore.error"
       class="empty-state pa-10 text-center"
       rounded="xl"
       elevation="0"
@@ -203,6 +288,31 @@ function clearFilters() {
       </v-btn>
     </v-card>
   </v-container>
+  <!-- Formulario para crear productos -->
+  <ProductFormDialog
+    v-if="authStore.isAdmin"
+    v-model="productDialog"
+    @saved="onProductSaved"
+  />
+
+  <!-- Confirmación -->
+  <v-snackbar
+    v-model="productSavedMessage"
+    color="success"
+    location="bottom right"
+    :timeout="3500"
+  >
+    Producto guardado correctamente en Supabase.
+
+    <template #actions>
+      <v-btn
+        variant="text"
+        @click="productSavedMessage = false"
+      >
+        Cerrar
+      </v-btn>
+    </template>
+  </v-snackbar>
 </template>
 
 <style scoped>

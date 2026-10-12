@@ -2,12 +2,67 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+import CurrencySettingsDialog from '@/components/admin/CurrencySettingsDialog.vue'
 
 const router = useRouter()
-
 const search = ref('')
 const mobileMenuOpen = ref(false)
+const currencySettingsDialog = ref(false)
 
+const authStore = useAuthStore()
+
+const loginDialog = ref(false)
+const loginEmail = ref('')
+const loginPassword = ref('')
+const showPassword = ref(false)
+const loginError = ref('')
+const loginLoading = ref(false)
+
+function openLoginDialog() {
+  loginEmail.value = ''
+  loginPassword.value = ''
+  loginError.value = ''
+  showPassword.value = false
+  loginDialog.value = true
+}
+
+async function submitAdminLogin() {
+  loginError.value = ''
+
+  if (!loginEmail.value.trim() || !loginPassword.value) {
+    loginError.value = 'Introduce tu correo y contraseña.'
+    return
+  }
+
+  loginLoading.value = true
+
+  try {
+    await authStore.login(
+      loginEmail.value.trim(),
+      loginPassword.value,
+    )
+
+    loginDialog.value = false
+    loginPassword.value = ''
+  } catch (error) {
+    loginError.value =
+      error instanceof Error
+        ? error.message
+        : 'No se pudo iniciar sesión.'
+  } finally {
+    loginLoading.value = false
+  }
+}
+
+async function signOutAdmin() {
+  try {
+    await authStore.logout()
+    loginDialog.value = false
+  } catch (error) {
+    console.error('Error al cerrar sesión:', error)
+  }
+}
 // Más adelante pondremos el número real de WhatsApp.
 const whatsappNumber = ''
 
@@ -115,6 +170,59 @@ function openWhatsApp() {
         aria-label="Contactar por WhatsApp"
         @click="openWhatsApp"
       />
+      <!-- Opciones de administración -->
+      <v-menu location="bottom end" offset="8">
+        <template #activator="{ props }">
+          <v-btn
+            v-bind="props"
+            icon="mdi-dots-vertical"
+            variant="text"
+            rounded="lg"
+            aria-label="Opciones"
+            class="admin-menu-button"
+          />
+        </template>
+
+        <v-list
+          elevation="4"
+          rounded="lg"
+          min-width="220"
+          density="comfortable"
+        >
+          <template v-if="authStore.isAdmin">
+            <v-list-item
+              prepend-icon="mdi-shield-account-outline"
+              :title="authStore.profile?.display_name || 'Administrador'"
+              subtitle="Sesión administrativa"
+              disabled
+            />
+
+            <v-divider class="my-1" />
+            
+            <v-list-item
+              prepend-icon="mdi-currency-usd"
+              title="Configuración de monedas"
+              subtitle="Tasas USD y EUR"
+              @click="currencySettingsDialog = true"
+            />
+
+            <v-divider class="my-1" />
+
+            <v-list-item
+              prepend-icon="mdi-logout"
+              title="Cerrar sesión"
+              @click="signOutAdmin"
+            />
+          </template>
+
+          <v-list-item
+            v-else
+            prepend-icon="mdi-lock-outline"
+            title="Acceso administrador"
+            @click="openLoginDialog"
+          />
+        </v-list>
+      </v-menu>
 
       <v-btn
         icon="mdi-menu"
@@ -177,6 +285,106 @@ function openWhatsApp() {
       </v-btn>
     </nav>
   </div>
+  <!-- Diálogo de acceso administrativo -->
+<v-dialog
+  v-model="loginDialog"
+  max-width="420"
+>
+  <v-card class="admin-login-card" rounded="xl">
+    <v-card-title class="admin-login-title">
+      <div class="admin-login-icon">
+        <v-icon
+          icon="mdi-shield-lock-outline"
+          size="26"
+        />
+      </div>
+
+      <div>
+        <div>Acceso administrativo</div>
+        <div class="admin-login-subtitle">
+          D'todo 1 poco
+        </div>
+      </div>
+
+      <v-spacer />
+
+      <v-btn
+        icon="mdi-close"
+        variant="text"
+        size="small"
+        aria-label="Cerrar"
+        @click="loginDialog = false"
+      />
+    </v-card-title>
+
+    <v-card-text class="pt-4">
+      <v-alert
+        v-if="loginError"
+        type="error"
+        variant="tonal"
+        density="compact"
+        rounded="lg"
+        class="mb-4"
+      >
+        {{ loginError }}
+      </v-alert>
+
+      <v-form @submit.prevent="submitAdminLogin">
+        <v-text-field
+          v-model="loginEmail"
+          label="Correo electrónico"
+          placeholder="admin@ejemplo.com"
+          prepend-inner-icon="mdi-email-outline"
+          type="email"
+          variant="outlined"
+          rounded="lg"
+          autocomplete="username"
+          class="mb-2"
+          :disabled="loginLoading"
+        />
+
+        <v-text-field
+          v-model="loginPassword"
+          label="Contraseña"
+          prepend-inner-icon="mdi-lock-outline"
+          :append-inner-icon="
+            showPassword
+              ? 'mdi-eye-off-outline'
+              : 'mdi-eye-outline'
+          "
+          :type="showPassword ? 'text' : 'password'"
+          variant="outlined"
+          rounded="lg"
+          autocomplete="current-password"
+          :disabled="loginLoading"
+          @click:append-inner="
+            showPassword = !showPassword
+          "
+        />
+
+        <v-btn
+          type="submit"
+          color="#087df1"
+          size="large"
+          rounded="lg"
+          block
+          class="mt-3"
+          :loading="loginLoading"
+        >
+          Iniciar sesión
+        </v-btn>
+      </v-form>
+    </v-card-text>
+
+    <v-card-text class="admin-login-footer">
+      Acceso exclusivo para administradores de la tienda.
+    </v-card-text>
+  </v-card>
+</v-dialog>
+<CurrencySettingsDialog
+  v-if="authStore.isAdmin"
+  v-model="currencySettingsDialog"
+/>
 </template>
 
 <style scoped>
@@ -407,5 +615,51 @@ function openWhatsApp() {
   .whatsapp-button {
     margin-left: auto;
   }
+}
+.admin-menu-button {
+  flex-shrink: 0;
+  color: #082b58;
+}
+
+.admin-login-card {
+  overflow: hidden;
+}
+
+.admin-login-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 24px 12px;
+  color: #082b58;
+  font-size: 17px;
+  font-weight: 750;
+  white-space: normal;
+}
+
+.admin-login-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: #eaf3ff;
+  color: #087df1;
+}
+
+.admin-login-subtitle {
+  margin-top: 3px;
+  color: #7b8ba3;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.admin-login-footer {
+  padding-top: 0;
+  padding-bottom: 22px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 11px;
 }
 </style>

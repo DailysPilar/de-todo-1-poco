@@ -1,21 +1,24 @@
+
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Product } from '@/types/product'
+import type { DatabaseProduct } from '@/types/databaseProduct'
 
 const props = defineProps<{
-  product: Product
+  product: DatabaseProduct
 }>()
 
-const formattedPrice = computed(() => {
-  if (props.product.price === null) {
-    return 'Consultar precio'
-  }
-
+function formatPrice(value: number) {
   return new Intl.NumberFormat('es-CU', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
-  }).format(props.product.price)
-})
+  }).format(value)
+}
+
+const hasPrice = computed(
+  () =>
+    props.product.price_cup !== null ||
+    props.product.price_usd !== null,
+)
 </script>
 
 <template>
@@ -26,15 +29,7 @@ const formattedPrice = computed(() => {
     :to="`/producto/${product.slug}`"
   >
     <div class="product-image">
-      <v-img
-        v-if="product.images.length"
-        :src="product.images[0]"
-        :alt="product.name"
-        height="210"
-        cover
-      />
-
-      <div v-else class="image-placeholder">
+      <div class="image-placeholder">
         <v-icon
           icon="mdi-image-outline"
           size="55"
@@ -50,6 +45,24 @@ const formattedPrice = computed(() => {
       >
         Agotado
       </v-chip>
+
+      <v-chip
+        v-if="product.status === 'draft'"
+        class="status-chip"
+        color="warning"
+        size="small"
+      >
+        Borrador
+      </v-chip>
+
+      <v-chip
+        v-if="product.status === 'archived'"
+        class="status-chip"
+        color="grey"
+        size="small"
+      >
+        Archivado
+      </v-chip>
     </div>
 
     <v-card-text>
@@ -57,12 +70,28 @@ const formattedPrice = computed(() => {
         {{ product.name }}
       </h3>
 
-      <div class="product-price mt-3">
-        {{ formattedPrice }}
+      <div class="product-prices mt-3">
+        <template v-if="hasPrice">
+          <div
+            v-if="product.price_cup !== null"
+            class="product-price"
+          >
+            {{ formatPrice(product.price_cup) }}
+            <span>CUP</span>
+          </div>
 
-        <span v-if="product.price !== null">
-          {{ product.currency }}
-        </span>
+          <div
+            v-if="product.price_usd !== null"
+            class="product-price"
+          >
+            {{ formatPrice(product.price_usd) }}
+            <span>USD</span>
+          </div>
+        </template>
+
+        <div v-else class="consult-price">
+          Consultar precio
+        </div>
       </div>
 
       <v-chip
@@ -119,12 +148,25 @@ const formattedPrice = computed(() => {
   left: 12px;
 }
 
+.status-chip {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
 .product-name {
   font-size: 16px;
   font-weight: 700;
   color: #082b58;
   line-height: 1.5;
   min-height: 48px;
+}
+
+.product-prices {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 32px;
 }
 
 .product-price {
@@ -134,7 +176,13 @@ const formattedPrice = computed(() => {
 }
 
 .product-price span {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
+}
+
+.consult-price {
+  font-size: 16px;
+  font-weight: 700;
+  color: #087df1;
 }
 </style>
