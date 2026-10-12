@@ -11,6 +11,7 @@ import type {
   ProductStatus,
 } from '@/types/databaseProduct'
 import ProductImagesManager from '@/components/products/ProductImagesManager.vue'
+
 type Currency = 'CUP' | 'USD' | 'EUR'
 
 const props = defineProps<{
@@ -78,9 +79,10 @@ const statusOptions = [
 ]
 
 const selectedCategoryName = computed(
-  () => categories.value.find(
-    (category) => category.id === categoryId.value,
-  )?.name,
+  () =>
+    categories.value.find(
+      category => category.id === categoryId.value,
+    )?.name,
 )
 
 function slugify(value: string) {
@@ -123,8 +125,13 @@ function resetForm() {
 
 watch(
   () => props.modelValue,
-  async (open) => {
+  async (open, _oldValue, onCleanup) => {
     if (!open) return
+
+    let cancelled = false
+    onCleanup(() => {
+      cancelled = true
+    })
 
     resetForm()
     loading.value = true
@@ -135,6 +142,8 @@ watch(
         getCategories(),
         getCurrencySettings(),
       ])
+
+      if (cancelled) return
 
       categories.value = categoryData
 
@@ -148,27 +157,24 @@ watch(
         rates.value.USD > 0 &&
         rates.value.EUR > 0
     } catch (error) {
+      if (cancelled) return
+
       errorMessage.value =
         error instanceof Error
           ? error.message
           : 'No se pudieron cargar los datos del formulario.'
     } finally {
-      loading.value = false
+      if (!cancelled) loading.value = false
     }
   },
+  { immediate: true },
 )
 
 function updatePrice(currency: Currency, value: string) {
   prices.value[currency] = value
 
-  if (!ratesReady.value || !accepted.value[currency]) {
-    return
-  }
-
-  if (value.trim() === '') {
-    // No convertir un campo vacío en un precio cero.
-    return
-  }
+  if (!ratesReady.value || !accepted.value[currency]) return
+  if (value.trim() === '') return
 
   const amount = Number(value)
 
@@ -202,12 +208,13 @@ function formatRate(value: number) {
 }
 
 async function saveProduct() {
-  if (!authStore.isAdmin) return
+  if (!authStore.isAdmin || saving.value) return
 
   errorMessage.value = ''
 
   if (!ratesReady.value || loading.value) {
-    errorMessage.value = 'No se ha cargado la configuración de monedas.'
+    errorMessage.value =
+      'No se ha cargado la configuración de monedas.'
     return
   }
 
@@ -233,7 +240,6 @@ async function saveProduct() {
     if (!accepted.value[currency]) continue
 
     const raw = prices.value[currency].trim()
-
     if (!raw) continue
 
     const amount = Number(raw)
@@ -246,7 +252,7 @@ async function saveProduct() {
     parsed[currency] = amount
   }
 
-  if (Object.values(parsed).every((price) => price === null)) {
+  if (Object.values(parsed).every(price => price === null)) {
     errorMessage.value = 'Indica al menos un precio aceptado.'
     return
   }
@@ -254,7 +260,8 @@ async function saveProduct() {
   const payload: ProductInput = {
     name: name.value.trim(),
     category_id: categoryId.value,
-    slug: props.product?.slug ??
+    slug:
+      props.product?.slug ??
       `${slug}-${crypto.randomUUID().slice(0, 8)}`,
     description: description.value.trim() || null,
     price_cup: parsed.CUP,
@@ -288,20 +295,39 @@ async function saveProduct() {
 </script>
 
 <template>
-  <v-dialog v-model="dialog" max-width="800" scrollable>
+  <v-dialog
+    v-model="dialog"
+    max-width="780"
+    max-height="92vh"
+    scrollable
+    :persistent="saving"
+  >
     <v-card class="editor-card" rounded="xl">
+      <!-- Encabezado -->
       <div class="editor-header">
         <div class="editor-heading">
           <div class="editor-icon">
             <v-icon
-              :icon="editing ? 'mdi-pencil-outline' : 'mdi-package-variant-plus'"
-              size="25"
+              :icon="
+                editing
+                  ? 'mdi-pencil-outline'
+                  : 'mdi-package-variant-plus'
+              "
+              size="21"
             />
           </div>
 
           <div>
-            <h2>{{ editing ? 'Editar producto' : 'Nuevo producto' }}</h2>
-            <p>Gestiona la información de tu tienda.</p>
+            <h2>
+              {{ editing ? 'Editar producto' : 'Nuevo producto' }}
+            </h2>
+            <p>
+              {{
+                editing
+                  ? 'Actualiza la información del producto.'
+                  : 'Añade un producto a tu tienda.'
+              }}
+            </p>
           </div>
         </div>
 
@@ -317,13 +343,15 @@ async function saveProduct() {
 
       <v-divider />
 
+      <!-- Contenido -->
       <v-card-text class="editor-body">
         <v-alert
           v-if="errorMessage"
           type="error"
           variant="tonal"
+          density="compact"
           rounded="lg"
-          class="mb-5"
+          class="mb-3"
         >
           {{ errorMessage }}
         </v-alert>
@@ -332,94 +360,126 @@ async function saveProduct() {
           v-if="loading"
           indeterminate
           color="primary"
-          class="mb-5"
+          class="mb-3"
         />
 
-        <v-form id="product-editor-form" @submit.prevent="saveProduct">
+        <v-form
+          id="product-editor-form"
+          @submit.prevent="saveProduct"
+        >
+          <!-- Información principal -->
           <section class="editor-section">
             <div class="section-title">
-              <v-icon icon="mdi-text-box-outline" color="primary" />
+              <div class="section-icon">
+                <v-icon icon="mdi-text-box-outline" size="19" />
+              </div>
+
               <div>
                 <h3>Información principal</h3>
-                <p>Describe claramente lo que estás vendiendo.</p>
+                <p>Datos básicos del producto.</p>
               </div>
             </div>
 
-            <label class="field-label">Nombre del producto *</label>
-            <v-text-field
-              v-model="name"
-              placeholder="Ej. Inversor solar híbrido de 5 kW"
-              variant="outlined"
-              density="comfortable"
-              rounded="lg"
-              hide-details
-              :disabled="saving || loading"
-              class="mb-5"
-            />
+            <v-row dense>
+              <v-col cols="12" sm="7">
+                <label class="field-label">
+                  Nombre del producto *
+                </label>
 
-            <label class="field-label">Categoría *</label>
-            <v-select
-              v-model="categoryId"
-              :items="categories"
-              item-title="name"
-              item-value="id"
-              placeholder="Selecciona una categoría"
-              variant="outlined"
-              density="comfortable"
-              rounded="lg"
-              hide-details
-              :disabled="saving || loading"
-              class="mb-5"
-            />
+                <v-text-field
+                  v-model="name"
+                  placeholder="Ej. Inversor solar de 5 kW"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details
+                  :disabled="saving || loading"
+                  class="editor-field"
+                />
+              </v-col>
 
-            <label class="field-label">Descripción</label>
-            <v-textarea
-              v-model="description"
-              placeholder="Características, especificaciones, ventajas, estado y todo lo que el cliente necesita saber..."
-              variant="outlined"
-              density="comfortable"
-              rounded="lg"
-              rows="5"
-              auto-grow
-              hide-details
-              :disabled="saving || loading"
-            />
+              <v-col cols="12" sm="5">
+                <label class="field-label">
+                  Categoría *
+                </label>
 
-            <p class="field-help mt-2">
-              Una descripción detallada ayuda a resolver dudas antes de contactar.
-            </p>
+                <v-select
+                  v-model="categoryId"
+                  :items="categories"
+                  item-title="name"
+                  item-value="id"
+                  placeholder="Seleccionar"
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  hide-details
+                  :disabled="saving || loading"
+                  class="editor-field"
+                />
+              </v-col>
+
+              <v-col cols="12">
+                <label class="field-label">
+                  Descripción
+                </label>
+
+                <v-textarea
+                  v-model="description"
+                  placeholder="Características, especificaciones y detalles del producto..."
+                  variant="outlined"
+                  density="compact"
+                  rounded="lg"
+                  rows="3"
+                  auto-grow
+                  hide-details
+                  :disabled="saving || loading"
+                  class="editor-field"
+                />
+              </v-col>
+            </v-row>
           </section>
+
+          <!-- Fotografías -->
           <ProductImagesManager
             v-if="editing && product"
             :key="product.id"
             :product-id="product.id"
-            class="mb-5"
+            class="images-manager"
           />
 
           <v-alert
             v-else
             type="info"
             variant="tonal"
+            density="compact"
             rounded="lg"
-            class="mb-5"
+            class="images-notice"
           >
-            Primero guarda el producto. Después podrás editarlo
-            para añadir sus fotografías.
+            Guarda el producto para poder añadir sus fotografías.
           </v-alert>
 
+          <!-- Precios -->
           <section class="editor-section">
             <div class="section-title">
-              <v-icon icon="mdi-cash-multiple" color="primary" />
+              <div class="section-icon">
+                <v-icon icon="mdi-cash-multiple" size="19" />
+              </div>
+
               <div>
                 <h3>Precios y monedas</h3>
-                <p>Introduce un precio y calcula automáticamente los demás.</p>
+                <p>Configura los precios de venta.</p>
               </div>
             </div>
 
-            <div class="exchange-banner mb-5">
-              <v-icon icon="mdi-swap-horizontal" size="21" />
+            <div class="exchange-banner">
+              <v-icon
+                icon="mdi-swap-horizontal"
+                size="19"
+              />
+
               <div>
                 <strong>Tasas configuradas</strong>
+
                 <p>
                   1 USD = {{ formatRate(rates.USD) }} CUP
                   <span class="rate-separator">·</span>
@@ -428,7 +488,7 @@ async function saveProduct() {
               </div>
             </div>
 
-            <v-row>
+            <v-row dense class="currency-grid">
               <v-col
                 v-for="currency in currencies"
                 :key="currency"
@@ -437,7 +497,9 @@ async function saveProduct() {
               >
                 <div
                   class="currency-card"
-                  :class="{ 'currency-card--disabled': !accepted[currency] }"
+                  :class="{
+                    'currency-card--disabled': !accepted[currency],
+                  }"
                 >
                   <div class="currency-heading">
                     <div>
@@ -453,7 +515,10 @@ async function saveProduct() {
                       :disabled="saving || loading"
                       :aria-label="`Aceptar ${currency}`"
                       @update:model-value="
-                        toggleCurrency(currency, Boolean($event))
+                        toggleCurrency(
+                          currency,
+                          Boolean($event),
+                        )
                       "
                     />
                   </div>
@@ -465,86 +530,122 @@ async function saveProduct() {
                     step="0.01"
                     placeholder="0.00"
                     variant="outlined"
-                    density="comfortable"
+                    density="compact"
                     rounded="lg"
                     hide-details
                     :suffix="currency"
-                    :disabled="!accepted[currency] || saving || loading"
+                    :disabled="
+                      !accepted[currency] ||
+                      saving ||
+                      loading
+                    "
+                    class="editor-field"
                     @update:model-value="
-                      updatePrice(currency, String($event ?? ''))
+                      updatePrice(
+                        currency,
+                        String($event ?? ''),
+                      )
                     "
                   />
                 </div>
               </v-col>
             </v-row>
 
-            <div class="helper-note mt-4">
-              <v-icon icon="mdi-information-outline" size="19" />
+            <div class="helper-note">
+              <v-icon
+                icon="mdi-information-outline"
+                size="17"
+              />
+
               <span>
-                Modificar un precio recalcula las otras monedas activas.
-                Desactiva las que no aceptes. Los precios existentes no
-                cambian al abrir el editor.
+                Al modificar un precio se recalculan las demás
+                monedas activas. Desactiva las que no aceptes.
               </span>
             </div>
           </section>
 
-          <section class="editor-section">
+          <!-- Publicación -->
+          <section class="editor-section publication-section">
             <div class="section-title">
-              <v-icon icon="mdi-storefront-outline" color="primary" />
+              <div class="section-icon">
+                <v-icon icon="mdi-storefront-outline" size="19" />
+              </div>
+
               <div>
                 <h3>Publicación y visibilidad</h3>
-                <p>Decide cómo aparecerá el producto en la tienda.</p>
+                <p>Controla cómo aparece en la tienda.</p>
               </div>
             </div>
 
-            <label class="field-label">Estado del producto</label>
+            <label class="field-label">
+              Estado del producto
+            </label>
+
             <v-select
               v-model="status"
               :items="statusOptions"
               variant="outlined"
-              density="comfortable"
+              density="compact"
               rounded="lg"
               hide-details
               :disabled="saving || loading"
-              class="mb-5"
+              class="editor-field status-field"
             />
 
-            <div class="setting-row">
-              <div>
-                <strong>Disponible para la venta</strong>
-                <p>Indica si tienes existencias actualmente.</p>
+            <div class="settings-container">
+              <div class="setting-row">
+                <div>
+                  <strong>Disponible para la venta</strong>
+                  <p>Indica si tienes existencias.</p>
+                </div>
+
+                <v-switch
+                  v-model="available"
+                  color="primary"
+                  density="compact"
+                  hide-details
+                  :disabled="saving || loading"
+                />
               </div>
-              <v-switch
-                v-model="available"
-                color="primary"
-                hide-details
-                :disabled="saving || loading"
-              />
+
+              <v-divider />
+
+              <div class="setting-row">
+                <div>
+                  <strong>Destacar en portada</strong>
+                  <p>Mostrar entre los productos destacados.</p>
+                </div>
+
+                <v-switch
+                  v-model="featured"
+                  color="primary"
+                  density="compact"
+                  hide-details
+                  :disabled="saving || loading"
+                />
+              </div>
             </div>
 
-            <v-divider class="my-4" />
-
-            <div class="setting-row">
-              <div>
-                <strong>Destacar en portada</strong>
-                <p>Promociona el producto en la página principal cuando esté publicado.</p>
-              </div>
-              <v-switch
-                v-model="featured"
+            <div class="publication-summary">
+              <v-icon
+                icon="mdi-check-decagram-outline"
+                size="18"
                 color="primary"
-                hide-details
-                :disabled="saving || loading"
               />
-            </div>
 
-            <div class="publication-summary mt-5">
-              <v-icon icon="mdi-check-decagram-outline" color="primary" />
               <span>
                 {{ name.trim() || 'Nuevo producto' }}
+
                 <template v-if="selectedCategoryName">
                   · {{ selectedCategoryName }}
                 </template>
-                · {{ status === 'published' ? 'Visible públicamente' : 'No visible públicamente' }}
+
+                ·
+                {{
+                  status === 'published'
+                    ? 'Visible públicamente'
+                    : 'No visible públicamente'
+                }}
               </span>
             </div>
           </section>
@@ -553,37 +654,59 @@ async function saveProduct() {
 
       <v-divider />
 
-      <v-card-actions class="editor-footer">
-        <v-btn
-          variant="text"
-          rounded="lg"
-          :disabled="saving"
-          @click="dialog = false"
-        >
-          Cancelar
-        </v-btn>
+      <!-- Footer compacto -->
+      <div class="editor-footer">
+        <span class="footer-hint">
+          <v-icon
+            icon="mdi-shield-check-outline"
+            size="15"
+          />
+          Gestión de productos
+        </span>
 
-        <v-btn
-          type="submit"
-          form="product-editor-form"
-          color="#087df1"
-          variant="flat"
-          rounded="lg"
-          prepend-icon="mdi-content-save-outline"
-          :loading="saving"
-          :disabled="loading || !authStore.isAdmin"
-        >
-          {{ editing ? 'Guardar cambios' : 'Crear producto' }}
-        </v-btn>
-      </v-card-actions>
+        <div class="footer-actions">
+          <v-btn
+            variant="text"
+            rounded="lg"
+            size="small"
+            :disabled="saving"
+            @click="dialog = false"
+          >
+            Cancelar
+          </v-btn>
+
+          <v-btn
+            type="submit"
+            form="product-editor-form"
+            color="#087df1"
+            variant="flat"
+            rounded="lg"
+            size="small"
+            prepend-icon="mdi-content-save-outline"
+            :loading="saving"
+            :disabled="loading || !authStore.isAdmin"
+          >
+            {{
+              editing
+                ? 'Guardar cambios'
+                : 'Crear producto'
+            }}
+          </v-btn>
+        </div>
+      </div>
     </v-card>
   </v-dialog>
 </template>
 
 <style scoped>
+/* Estructura general */
+
 .editor-card {
   background: #fff;
+  overflow: hidden;
 }
+
+/* Encabezado */
 
 .editor-header,
 .editor-heading {
@@ -594,186 +717,396 @@ async function saveProduct() {
 .editor-header {
   justify-content: space-between;
   gap: 12px;
-  padding: 24px 28px;
+  padding: 13px 20px;
+  background: #fff;
 }
 
 .editor-heading {
-  gap: 14px;
+  gap: 11px;
+  min-width: 0;
 }
 
 .editor-icon {
   display: grid;
   place-items: center;
-  width: 50px;
-  height: 50px;
+  width: 40px;
+  height: 40px;
   flex-shrink: 0;
   background: #eaf3ff;
   color: #087df1;
-  border-radius: 15px;
+  border-radius: 11px;
 }
 
 .editor-heading h2 {
-  font-size: 21px;
-  font-weight: 800;
+  margin: 0;
   color: #082b58;
-  letter-spacing: -0.5px;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  line-height: 1.3;
 }
 
-.editor-heading p,
-.section-title p,
-.setting-row p {
-  color: #7b8ba3;
-  font-size: 12px;
-  line-height: 1.6;
-  margin-top: 3px;
+.editor-heading p {
+  margin: 2px 0 0;
+  color: #8492a6;
+  font-size: 11px;
+  line-height: 1.4;
 }
+
+/* Contenido */
 
 .editor-body {
-  padding: 26px 28px !important;
-  background: #f8fafd;
+  padding: 14px 18px !important;
+  background: #f7f9fc;
 }
 
 .editor-section {
+  padding: 17px 18px;
+  margin-bottom: 12px;
   background: #fff;
-  border: 1px solid #e7edf5;
-  border-radius: 18px;
-  padding: 24px;
-  margin-bottom: 20px;
+  border: 1px solid #e6edf5;
+  border-radius: 14px;
+}
+
+.editor-section:last-child {
+  margin-bottom: 0;
 }
 
 .section-title {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  margin-bottom: 25px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.section-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  background: #edf5ff;
+  color: #087df1;
 }
 
 .section-title h3 {
-  font-size: 16px;
-  font-weight: 800;
+  margin: 0;
   color: #082b58;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
 }
+
+.section-title p {
+  margin: 2px 0 0;
+  color: #8a98ab;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* Campos */
 
 .field-label {
   display: block;
-  font-size: 13px;
-  font-weight: 700;
+  margin-bottom: 5px;
   color: #334155;
-  margin-bottom: 9px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.field-help {
-  font-size: 12px;
-  color: #94a3b8;
+.editor-field :deep(.v-field) {
+  border-radius: 9px;
+  background: #fbfcff;
 }
+
+.editor-field :deep(.v-field:hover) {
+  background: #f6faff;
+}
+
+.editor-field :deep(.v-field--focused) {
+  background: #fff;
+}
+
+.editor-field :deep(.v-field__input) {
+  font-size: 13px;
+}
+
+/* Fotografías */
+
+.images-manager {
+  margin-bottom: 12px;
+}
+
+.images-notice {
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+
+/* Monedas */
 
 .exchange-banner {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 15px;
-  border-radius: 13px;
-  background: #edf6ff;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid #dcecff;
+  border-radius: 10px;
+  background: #f0f7ff;
   color: #087df1;
 }
 
 .exchange-banner strong {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 750;
 }
 
 .exchange-banner p {
-  font-size: 12px;
-  color: #475569;
-  margin-top: 3px;
+  margin: 2px 0 0;
+  color: #52657e;
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 .rate-separator {
   padding: 0 6px;
+  color: #94a3b8;
+}
+
+.currency-grid {
+  margin-top: 0;
 }
 
 .currency-card {
   height: 100%;
-  padding: 15px;
+  padding: 11px;
   border: 1px solid #dce7f4;
-  border-radius: 14px;
+  border-radius: 11px;
   background: #fbfdff;
-  transition: opacity 0.2s;
+  transition:
+    opacity 0.2s ease,
+    background 0.2s ease;
 }
 
 .currency-card--disabled {
   opacity: 0.55;
-  background: #f5f5f5;
-}
-
-.currency-heading,
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  background: #f5f6f8;
 }
 
 .currency-heading {
-  margin-bottom: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 7px;
 }
 
 .currency-heading strong {
   color: #082b58;
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .currency-heading p {
+  margin: 1px 0 0;
   color: #94a3b8;
-  font-size: 11px;
-  margin-top: 3px;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.currency-heading :deep(.v-switch) {
+  flex: 0 0 auto;
 }
 
 .helper-note {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.6;
+  gap: 7px;
+  margin-top: 11px;
+  color: #718096;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.helper-note .v-icon {
+  flex-shrink: 0;
+  color: #087df1;
+}
+
+/* Publicación */
+
+.status-field {
+  margin-bottom: 12px;
+}
+
+.settings-container {
+  padding: 0 12px;
+  border: 1px solid #e7edf5;
+  border-radius: 11px;
+  background: #fbfcff;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 57px;
+  padding: 8px 0;
 }
 
 .setting-row strong {
   color: #334155;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.setting-row p {
+  margin: 2px 0 0;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.setting-row :deep(.v-switch) {
+  flex: 0 0 auto;
 }
 
 .publication-summary {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-top: 12px;
+  border-radius: 10px;
   background: #f0f7ff;
-  border-radius: 12px;
-  padding: 14px;
-  color: #475569;
-  font-size: 12px;
+  color: #52657e;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
-.editor-footer {
-  justify-content: flex-end;
-  gap: 10px;
-  padding: 18px 28px;
+.publication-summary .v-icon {
+  flex-shrink: 0;
 }
+
+/* Footer compacto */
+
+.editor-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 0;
+  padding: 9px 18px;
+  background: #fff;
+}
+
+.footer-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+.footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.footer-actions :deep(.v-btn) {
+  min-height: 34px;
+  padding-inline: 13px;
+  text-transform: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* Responsive */
 
 @media (max-width: 600px) {
   .editor-header {
-    padding: 18px;
+    padding: 11px 14px;
+  }
+
+  .editor-heading {
+    gap: 9px;
+  }
+
+  .editor-icon {
+    width: 36px;
+    height: 36px;
+  }
+
+  .editor-heading h2 {
+    font-size: 17px;
+  }
+
+  .editor-heading p {
+    font-size: 10px;
   }
 
   .editor-body {
-    padding: 14px !important;
+    padding: 10px !important;
   }
 
   .editor-section {
-    padding: 17px;
+    padding: 13px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+  }
+
+  .section-title {
+    margin-bottom: 12px;
+  }
+
+  .section-title h3 {
+    font-size: 13px;
+  }
+
+  .section-title p {
+    font-size: 10px;
+  }
+
+  .exchange-banner {
+    padding: 9px 10px;
+  }
+
+  .currency-card {
+    padding: 10px;
+  }
+
+  .images-manager,
+  .images-notice {
+    margin-bottom: 10px;
   }
 
   .editor-footer {
-    padding: 14px;
+    padding: 8px 12px;
+  }
+
+  .footer-hint {
+    display: none;
+  }
+
+  .footer-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .footer-actions :deep(.v-btn) {
+    font-size: 11px;
+    padding-inline: 10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .currency-card {
+    transition: none;
   }
 }
 </style>

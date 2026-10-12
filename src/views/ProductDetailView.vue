@@ -2,7 +2,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getProductBySlugFromApi } from '@/api/products'
+import {
+  getProductBySlugFromApi,
+  deleteProduct,
+} from '@/api/products'
 import type { DatabaseProduct } from '@/types/databaseProduct'
 import { useAuthStore } from '@/stores/auth'
 import ProductFormDialog from '@/components/products/ProductFormDialog.vue'
@@ -10,62 +13,23 @@ import {
   getProductImagesWithUrls,
   type ProductImageWithUrl,
 } from '@/api/productImages'
-import { deleteProduct } from '@/api/products'
+
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+
+const product = ref<DatabaseProduct | null>(null)
+const loading = ref(true)
+const error = ref('')
+
+const productImages = ref<ProductImageWithUrl[]>([])
+const selectedImage = ref(0)
+
 const editDialog = ref(false)
 const deleteDialog = ref(false)
 const deleting = ref(false)
 const deleteError = ref('')
 
-function openDeleteDialog() {
-  if (!authStore.isAdmin || !product.value) return
-
-  deleteError.value = ''
-  deleteDialog.value = true
-}
-
-async function confirmDeleteProduct() {
-  if (!authStore.isAdmin || !product.value || deleting.value) return
-
-  deleting.value = true
-  deleteError.value = ''
-
-  try {
-    await deleteProduct(product.value.id)
-
-    deleteDialog.value = false
-
-    await router.push('/catalogo')
-  } catch (error) {
-    deleteError.value =
-      error instanceof Error
-        ? error.message
-        : 'No se pudo eliminar el producto.'
-  } finally {
-    deleting.value = false
-  }
-}
-async function refreshProduct() {
-  product.value = await getProductBySlugFromApi(
-    String(route.params.slug),
-  )
-
-  if (product.value) {
-    await loadProductImages(product.value.id)
-  }
-}
-const product = ref<DatabaseProduct | null>(null)
-const loading = ref(true)
-const error = ref('')
-const productImages = ref<ProductImageWithUrl[]>([])
-const selectedImage = ref(0)
-
-async function loadProductImages(productId: string) {
-  productImages.value = await getProductImagesWithUrls(productId)
-  selectedImage.value = 0
-}
 const prices = computed(() => {
   if (!product.value) return []
 
@@ -79,36 +43,137 @@ const prices = computed(() => {
   )
 })
 
+const publicationStatus = computed(() => {
+  switch (product.value?.status) {
+    case 'published':
+      return {
+        label: 'Publicado',
+        color: 'success',
+      }
+
+    case 'draft':
+      return {
+        label: 'Borrador',
+        color: 'warning',
+      }
+
+    case 'archived':
+      return {
+        label: 'Archivado',
+        color: 'default',
+      }
+
+    default:
+      return {
+        label: 'Sin definir',
+        color: 'default',
+      }
+  }
+})
+
 function formatPrice(value: number) {
   return new Intl.NumberFormat('es-CU', {
     maximumFractionDigits: 2,
   }).format(value)
 }
 
+async function loadProductImages(productId: string) {
+  productImages.value = await getProductImagesWithUrls(productId)
+  selectedImage.value = 0
+}
+
+async function refreshProduct() {
+  const updatedProduct = await getProductBySlugFromApi(
+    String(route.params.slug),
+  )
+
+  product.value = updatedProduct
+  productImages.value = []
+
+  if (updatedProduct) {
+    try {
+      await loadProductImages(updatedProduct.id)
+    } catch (imageError) {
+      console.error('Error cargando fotografías:', imageError)
+    }
+  }
+}
+
+function openDeleteDialog() {
+  if (!authStore.isAdmin || !product.value) return
+
+  deleteError.value = ''
+  deleteDialog.value = true
+}
+
+async function confirmDeleteProduct() {
+  if (!authStore.isAdmin || !product.value || deleting.value) {
+    return
+  }
+
+  deleting.value = true
+  deleteError.value = ''
+
+  try {
+    await deleteProduct(product.value.id)
+
+    deleteDialog.value = false
+    await router.push('/catalogo')
+  } catch (deleteFailure) {
+    deleteError.value =
+      deleteFailure instanceof Error
+        ? deleteFailure.message
+        : 'No se pudo eliminar el producto.'
+  } finally {
+    deleting.value = false
+  }
+}
+
 watch(
   () => route.params.slug,
-  async (slug) => {
+  async (slug, _oldSlug, onCleanup) => {
+    let cancelled = false
+
+    onCleanup(() => {
+      cancelled = true
+    })
+
     loading.value = true
     error.value = ''
     product.value = null
+    productImages.value = []
+    selectedImage.value = 0
 
     try {
-      product.value = await getProductBySlugFromApi(
+      const loadedProduct = await getProductBySlugFromApi(
         String(slug),
       )
-      productImages.value = []
 
-      if (product.value) {
+      if (cancelled) return
+
+      product.value = loadedProduct
+
+      if (loadedProduct) {
         try {
-          await loadProductImages(product.value.id)
-        } catch (error) {
-          console.error('Error cargando fotografías:', error)
+          const images = await getProductImagesWithUrls(
+            loadedProduct.id,
+          )
+
+          if (!cancelled) {
+            productImages.value = images
+          }
+        } catch (imageError) {
+          console.error('Error cargando fotografías:', imageError)
         }
       }
     } catch {
-      error.value = 'No pudimos cargar este producto.'
+      if (!cancelled) {
+        error.value = 'No pudimos cargar este producto.'
+      }
     } finally {
-      loading.value = false
+      if (!cancelled) {
+        loading.value = false
+      }
     }
   },
   { immediate: true },
@@ -116,25 +181,31 @@ watch(
 </script>
 
 <template>
-  <v-container class="product-detail py-8 py-md-12">
+  <v-container class="product-detail py-5 py-md-8">
+    <!-- Navegación -->
     <v-btn
       to="/catalogo"
       variant="text"
       color="primary"
       prepend-icon="mdi-arrow-left"
-      class="mb-6"
+      size="small"
+      class="back-button mb-4"
     >
       Volver al catálogo
     </v-btn>
 
-    <div v-if="loading" class="py-12 text-center">
+    <!-- Cargando -->
+    <div v-if="loading" class="loading-state">
       <v-progress-circular
         indeterminate
         color="primary"
-        size="48"
+        size="42"
       />
+
+      <span>Cargando producto...</span>
     </div>
 
+    <!-- Error -->
     <v-alert
       v-else-if="error"
       type="error"
@@ -144,183 +215,287 @@ watch(
       {{ error }}
     </v-alert>
 
-    <v-row v-else-if="product" class="ga-0">
-      <!-- Galería: pendiente de conectar las fotografías -->
-      <v-col cols="12" md="6" class="pr-md-6">
+    <!-- Ficha del producto -->
+    <v-row
+      v-else-if="product"
+      class="product-layout"
+    >
+      <!-- Galería -->
+      <v-col cols="12" md="6">
         <div class="product-gallery-wrapper">
-          <v-card
-            class="product-gallery"
-            rounded="xl"
-            elevation="0"
-          >
+          <div class="product-gallery">
             <v-img
               v-if="productImages.length"
               :src="productImages[selectedImage]?.url"
               :alt="product.name"
               width="100%"
-              height="420"
+              height="350"
               contain
               class="main-product-image"
             />
 
-            <template v-else>
-              <v-icon
-                icon="mdi-image-outline"
-                size="90"
-                color="grey-lighten-1"
-              />
-              <span>Sin fotografías disponibles</span>
-            </template>
-          </v-card>
+            <div
+              v-else
+              class="gallery-placeholder"
+            >
+              <div class="placeholder-icon">
+                <v-icon
+                  icon="mdi-image-outline"
+                  size="45"
+                />
+              </div>
 
+              <span>Sin fotografías disponibles</span>
+            </div>
+          </div>
+
+          <!-- Miniaturas -->
           <div
             v-if="productImages.length > 1"
-            class="product-thumbnails mt-4"
+            class="product-thumbnails"
           >
             <button
               v-for="(image, index) in productImages"
               :key="image.id"
               type="button"
               class="product-thumbnail"
-              :class="{ 'product-thumbnail--active': selectedImage === index }"
+              :class="{
+                'product-thumbnail--active':
+                  selectedImage === index,
+              }"
               :aria-label="`Ver fotografía ${index + 1}`"
+              :aria-pressed="selectedImage === index"
               @click="selectedImage = index"
             >
               <v-img
                 :src="image.url"
                 :alt="`${product.name} - foto ${index + 1}`"
-                width="80"
-                height="80"
+                width="100%"
+                height="100%"
                 cover
               />
             </button>
+          </div>
+
+          <div
+            v-if="productImages.length > 1"
+            class="gallery-counter"
+          >
+            <v-icon
+              icon="mdi-image-multiple-outline"
+              size="15"
+            />
+
+            {{ selectedImage + 1 }} de {{ productImages.length }}
+            fotografías
           </div>
         </div>
       </v-col>
 
       <!-- Información -->
-      <v-col cols="12" md="6" class="pt-6 pt-md-0">
-        <v-chip
-          :color="product.available ? 'success' : 'error'"
-          variant="tonal"
-          size="small"
-          class="mb-4"
-        >
-          {{ product.available ? 'Disponible' : 'Agotado' }}
-        </v-chip>
-
-        <v-chip
-          v-if="product.status !== 'published'"
-          color="warning"
-          variant="tonal"
-          size="small"
-          class="ml-2 mb-4"
-        >
-          {{ product.status === 'draft' ? 'Borrador' : 'Archivado' }}
-        </v-chip>
-
-        <h1 class="product-title">
-          {{ product.name }}
-        </h1>
-        <v-btn
-            v-if="authStore.isAdmin"
-            color="primary"
-            variant="tonal"
-            rounded="lg"
-            prepend-icon="mdi-pencil-outline"
-            class="mt-4"
-            @click="editDialog = true"
-          >
-            Editar producto
-          </v-btn>
-          <v-btn
-            v-if="authStore.isAdmin"
-            color="error"
-            variant="tonal"
-            rounded="lg"
-            prepend-icon="mdi-trash-can-outline"
-            @click="openDeleteDialog"
-          >
-            Eliminar producto
-          </v-btn>
-
-        <p class="product-intro mt-4">
-          {{ product.description || 'Consulta los detalles de este producto.' }}
-        </p>
-
-        <v-card
-          class="price-panel mt-7 pa-5"
-          rounded="xl"
-          elevation="0"
-        >
-          <div class="section-label mb-4">
-            Precios disponibles
+      <v-col cols="12" md="6">
+        <div class="product-information">
+          <!-- Disponibilidad pública -->
+          <div class="product-badges">
+            <v-chip
+              :color="product.available ? 'success' : 'error'"
+              variant="tonal"
+              size="small"
+              :prepend-icon="
+                product.available
+                  ? 'mdi-check-circle-outline'
+                  : 'mdi-close-circle-outline'
+              "
+            >
+              {{ product.available ? 'Disponible' : 'Agotado' }}
+            </v-chip>
           </div>
 
-          <div v-if="prices.length" class="price-list">
-            <div
-              v-for="price in prices"
-              :key="price.currency"
-              class="price-item"
-            >
-              <span class="currency-label">
-                {{ price.currency }}
-              </span>
+          <!-- Nombre -->
+          <h1 class="product-title">
+            {{ product.name }}
+          </h1>
 
-              <strong>
-                {{ formatPrice(price.value) }}
-              </strong>
+          <!-- Acciones administrativas -->
+          <div
+            v-if="authStore.isAdmin"
+            class="admin-actions"
+          >
+            <v-btn
+              color="primary"
+              variant="tonal"
+              rounded="lg"
+              size="small"
+              prepend-icon="mdi-pencil-outline"
+              @click="editDialog = true"
+            >
+              Editar producto
+            </v-btn>
+
+            <v-btn
+              color="error"
+              variant="text"
+              rounded="lg"
+              size="small"
+              prepend-icon="mdi-trash-can-outline"
+              @click="openDeleteDialog"
+            >
+              Eliminar
+            </v-btn>
+          </div>
+
+          <!-- Descripción -->
+          <p class="product-intro">
+            {{
+              product.description ||
+              'Consulta los detalles de este producto.'
+            }}
+          </p>
+
+          <!-- Precios -->
+          <div class="price-panel">
+            <div class="panel-heading">
+              <v-icon
+                icon="mdi-tag-outline"
+                size="18"
+                color="primary"
+              />
+
+              <h2>Precios disponibles</h2>
+            </div>
+
+            <div
+              v-if="prices.length"
+              class="price-grid"
+            >
+              <div
+                v-for="price in prices"
+                :key="price.currency"
+                class="price-box"
+              >
+                <span>{{ price.currency }}</span>
+
+                <strong>
+                  {{ formatPrice(price.value) }}
+                </strong>
+              </div>
+            </div>
+
+            <p v-else class="no-price">
+              Consultar precio
+            </p>
+          </div>
+
+          <!-- Configuración exclusiva del administrador -->
+          <div
+            v-if="authStore.isAdmin"
+            class="admin-panel"
+          >
+            <div class="admin-panel-header">
+              <div class="admin-panel-title">
+                <v-icon
+                  icon="mdi-cog-outline"
+                  size="18"
+                  color="primary"
+                />
+
+                <h2>Visibilidad y configuración</h2>
+              </div>
+
+              <v-chip
+                color="primary"
+                variant="tonal"
+                size="x-small"
+              >
+                Administración
+              </v-chip>
+            </div>
+
+            <!-- Estado de publicación -->
+            <div class="admin-setting-row">
+              <div class="admin-setting-info">
+                <strong>Estado de publicación</strong>
+                <p>Visibilidad en el catálogo</p>
+              </div>
+
+              <v-chip
+                :color="publicationStatus.color"
+                variant="tonal"
+                size="small"
+              >
+                {{ publicationStatus.label }}
+              </v-chip>
+            </div>
+
+            <v-divider />
+
+            <!-- Disponibilidad -->
+            <div class="admin-setting-row">
+              <div class="admin-setting-info">
+                <strong>Disponible para la venta</strong>
+                <p>Indica si hay existencias</p>
+              </div>
+
+              <v-chip
+                :color="product.available ? 'success' : 'error'"
+                variant="tonal"
+                size="small"
+                :prepend-icon="
+                  product.available
+                    ? 'mdi-check-circle-outline'
+                    : 'mdi-close-circle-outline'
+                "
+              >
+                {{ product.available ? 'Sí' : 'No' }}
+              </v-chip>
+            </div>
+
+            <v-divider />
+
+            <!-- Destacado -->
+            <div class="admin-setting-row">
+              <div class="admin-setting-info">
+                <strong>Destacar en portada</strong>
+                <p>Aparece entre los productos destacados</p>
+              </div>
+
+              <v-chip
+                :color="product.featured ? 'primary' : 'default'"
+                variant="tonal"
+                size="small"
+                :prepend-icon="
+                  product.featured
+                    ? 'mdi-star-outline'
+                    : 'mdi-minus-circle-outline'
+                "
+              >
+                {{ product.featured ? 'Sí' : 'No' }}
+              </v-chip>
             </div>
           </div>
 
-          <p v-else class="text-medium-emphasis">
-            Consultar precio
+          <!-- Contacto -->
+          <v-btn
+            color="#19B56B"
+            size="large"
+            rounded="lg"
+            block
+            class="whatsapp-button mt-4 text-white"
+            prepend-icon="mdi-whatsapp"
+            disabled
+          >
+            Consultar por WhatsApp
+          </v-btn>
+
+          <p class="contact-note">
+            Activaremos las consultas cuando configuremos
+            el número de WhatsApp de la tienda.
           </p>
-        </v-card>
-
-        <v-card
-          class="details-panel mt-5 pa-5"
-          rounded="xl"
-          elevation="0"
-        >
-          <h2 class="section-label mb-4">
-            Información del producto
-          </h2>
-
-          <div class="detail-row">
-            <span>Disponibilidad</span>
-            <strong>
-              {{ product.available ? 'En existencia' : 'Agotado' }}
-            </strong>
-          </div>
-
-          <v-divider class="my-3" />
-
-          <div class="detail-row">
-            <span>Referencia</span>
-            <strong>{{ product.slug }}</strong>
-          </div>
-        </v-card>
-
-        <v-btn
-          color="#19B56B"
-          size="x-large"
-          rounded="lg"
-          block
-          class="mt-6 text-white"
-          prepend-icon="mdi-whatsapp"
-          disabled
-        >
-          Consultar por WhatsApp
-        </v-btn>
-
-        <p class="contact-note mt-3">
-          Activaremos las consultas cuando configuremos
-          el número de WhatsApp de la tienda.
-        </p>
+        </div>
       </v-col>
     </v-row>
 
+    <!-- Producto no encontrado -->
     <v-alert
       v-else
       type="warning"
@@ -330,69 +505,79 @@ watch(
       Este producto no está disponible.
     </v-alert>
   </v-container>
-      <v-dialog
-      v-model="deleteDialog"
-      max-width="440"
-      persistent
+
+  <!-- Confirmación de eliminación -->
+  <v-dialog
+    v-model="deleteDialog"
+    max-width="420"
+    persistent
+  >
+    <v-card
+      class="delete-dialog"
+      rounded="xl"
+      elevation="8"
     >
-      <v-card class="delete-dialog" rounded="xl">
-        <v-card-text class="pa-6">
-          <div class="delete-icon">
-            <v-icon
-              icon="mdi-trash-can-outline"
-              size="30"
-              color="error"
-            />
-          </div>
-
-          <h2 class="delete-title">
-            ¿Eliminar este producto?
-          </h2>
-
-          <p class="delete-description">
-            Estás a punto de eliminar
-            <strong>{{ product?.name }}</strong>.
-          </p>
-
-          <p class="delete-warning">
-            Esta acción es permanente y no se puede deshacer.
-          </p>
-
-          <v-alert
-            v-if="deleteError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            class="mt-4"
-          >
-            {{ deleteError }}
-          </v-alert>
-        </v-card-text>
-
-        <v-card-actions class="px-6 pb-6 pt-0">
-          <v-btn
-            variant="outlined"
-            rounded="lg"
-            class="flex-grow-1"
-            :disabled="deleting"
-            @click="deleteDialog = false"
-          >
-            Cancelar
-          </v-btn>
-
-          <v-btn
+      <div class="delete-content">
+        <div class="delete-icon">
+          <v-icon
+            icon="mdi-trash-can-outline"
+            size="26"
             color="error"
-            variant="flat"
-            rounded="lg"
-            class="flex-grow-1"
-            :loading="deleting"
-            @click="confirmDeleteProduct"
-          >
-            Sí, eliminar
-          </v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+          />
+        </div>
+
+        <h2 class="delete-title">
+          ¿Eliminar este producto?
+        </h2>
+
+        <p class="delete-description">
+          Estás a punto de eliminar
+          <strong>{{ product?.name }}</strong>.
+        </p>
+
+        <p class="delete-warning">
+          Esta acción es permanente y no se puede deshacer.
+        </p>
+
+        <v-alert
+          v-if="deleteError"
+          type="error"
+          variant="tonal"
+          density="compact"
+          rounded="lg"
+          class="mt-3"
+        >
+          {{ deleteError }}
+        </v-alert>
+      </div>
+
+      <div class="delete-footer">
+        <v-btn
+          variant="outlined"
+          rounded="lg"
+          size="small"
+          :disabled="deleting"
+          @click="deleteDialog = false"
+        >
+          Cancelar
+        </v-btn>
+
+        <v-btn
+          color="error"
+          variant="flat"
+          rounded="lg"
+          size="small"
+          prepend-icon="mdi-trash-can-outline"
+          :loading="deleting"
+          @click="confirmDeleteProduct"
+        >
+          Sí, eliminar
+        </v-btn>
+      </div>
+    </v-card>
+  </v-dialog>
+
+  <!-- Formulario de edición -->
   <ProductFormDialog
     v-if="authStore.isAdmin && product"
     v-model="editDialog"
@@ -402,132 +587,112 @@ watch(
 </template>
 
 <style scoped>
+/* Página */
+
 .product-detail {
-  max-width: 1240px;
+  max-width: 1200px;
+  min-height: 70vh;
+}
+
+.back-button {
+  text-transform: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* Carga */
+
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 320px;
+  color: #718096;
+  font-size: 13px;
+}
+
+/* Distribución */
+
+.product-layout {
+  margin: -10px;
+}
+
+.product-layout > .v-col {
+  padding: 10px;
+}
+
+/* Galería */
+
+.product-gallery-wrapper {
+  width: 100%;
 }
 
 .product-gallery {
-  min-height: 420px;
-  background: linear-gradient(145deg, #f5f8fc, #eaf3ff);
-  border: 1px solid #e5ecf5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 350px;
+  overflow: hidden;
+  background: linear-gradient(145deg, #f7faff, #edf4fc);
+  border: 1px solid #e3ebf5;
+  border-radius: 16px;
+}
+
+.main-product-image {
+  border-radius: 15px;
+}
+
+.gallery-placeholder {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
+  min-height: 350px;
   color: #94a3b8;
-  font-size: 13px;
-}
-
-.product-title {
-  color: #082b58;
-  font-size: clamp(28px, 3vw, 42px);
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.8px;
-}
-
-.product-intro {
-  color: #64748b;
-  font-size: 15px;
-  line-height: 1.8;
-  white-space: pre-line;
-}
-
-.price-panel {
-  background: #f5f9ff;
-  border: 1px solid #dceafd;
-}
-
-.details-panel {
-  background: white;
-  border: 1px solid #e8edf5;
-}
-
-.section-label {
-  color: #082b58;
-  font-size: 15px;
-  font-weight: 750;
-}
-
-.price-list {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.price-item,
-.detail-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.price-item strong {
-  color: #087df1;
-  font-size: 24px;
-  font-weight: 800;
-}
-
-.currency-label {
-  color: #64748b;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.detail-row {
-  font-size: 13px;
-  color: #64748b;
-}
-
-.detail-row strong {
-  color: #082b58;
-  overflow-wrap: anywhere;
-  text-align: right;
-}
-
-.contact-note {
-  color: #94a3b8;
-  text-align: center;
   font-size: 12px;
 }
 
-@media (max-width: 600px) {
-  .product-gallery {
-    min-height: 280px;
-  }
-
-  .price-item strong {
-    font-size: 20px;
-  }
-}
-.product-gallery-wrapper {
-  width: 100%;
-}
-
-.main-product-image {
-  border-radius: 18px;
+.placeholder-icon {
+  display: grid;
+  place-items: center;
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  color: #a8bdd8;
+  background: #e8f1fd;
 }
 
 .product-thumbnails {
   display: flex;
-  gap: 12px;
+  gap: 9px;
   overflow-x: auto;
-  padding: 4px 2px 10px;
+  padding: 3px 2px 8px;
+  margin-top: 12px;
 }
 
 .product-thumbnail {
   flex-shrink: 0;
-  width: 84px;
-  height: 84px;
-  border: 2px solid transparent;
-  border-radius: 12px;
+  width: 68px;
+  height: 68px;
+  padding: 0;
   overflow: hidden;
   cursor: pointer;
-  background: white;
-  padding: 0;
-  transition: all 0.2s ease;
+  background: #fff;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.product-thumbnail :deep(.v-img) {
+  width: 100% !important;
+  height: 100% !important;
 }
 
 .product-thumbnail:hover {
@@ -536,35 +701,239 @@ watch(
 
 .product-thumbnail--active {
   border-color: #087df1;
-  box-shadow: 0 3px 12px rgba(8, 125, 241, 0.15);
+  box-shadow: 0 2px 9px rgba(8, 125, 241, 0.14);
 }
+
+.gallery-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 9px;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+/* Información del producto */
+
+.product-information {
+  width: 100%;
+}
+
+.product-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 12px;
+}
+
+.product-title {
+  margin: 0;
+  color: #082b58;
+  font-size: clamp(25px, 2.8vw, 35px);
+  font-weight: 850;
+  line-height: 1.2;
+  letter-spacing: -0.8px;
+}
+
+.product-intro {
+  margin: 14px 0 0;
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
+/* Acciones administrativas */
+
+.admin-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 13px;
+}
+
+.admin-actions :deep(.v-btn) {
+  text-transform: none;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* Precios */
+
+.price-panel {
+  margin-top: 22px;
+  padding: 17px 18px;
+  border: 1px solid #dceafd;
+  border-radius: 14px;
+  background: #f0f7ff;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.panel-heading h2 {
+  margin: 0;
+  color: #082b58;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.price-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.price-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e0ebfa;
+  border-radius: 10px;
+}
+
+.price-box span {
+  color: #718096;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.price-box strong {
+  color: #087df1;
+  font-size: clamp(14px, 1.6vw, 19px);
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
+.no-price {
+  color: #64748b;
+  font-size: 13px;
+}
+
+/* Panel administrativo */
+
+.admin-panel {
+  margin-top: 13px;
+  padding: 15px 17px;
+  background: #fff;
+  border: 1px solid #e6edf5;
+  border-radius: 14px;
+}
+
+.admin-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.admin-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-panel-title h2 {
+  margin: 0;
+  color: #082b58;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.admin-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 0;
+}
+
+.admin-setting-info {
+  min-width: 0;
+}
+
+.admin-setting-info strong {
+  display: block;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.admin-setting-info p {
+  margin: 3px 0 0;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.admin-setting-row .v-chip {
+  flex-shrink: 0;
+}
+
+/* WhatsApp */
+
+.whatsapp-button {
+  text-transform: none;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.contact-note {
+  margin: 10px 0 0;
+  color: #94a3b8;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* Modal de eliminación */
+
 .delete-dialog {
+  overflow: hidden;
   border: 1px solid #fee2e2;
+}
+
+.delete-content {
+  padding: 22px 24px 14px;
 }
 
 .delete-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 58px;
-  height: 58px;
-  margin-bottom: 20px;
-  border-radius: 18px;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 14px;
+  border-radius: 13px;
   background: #fef2f2;
 }
 
 .delete-title {
+  margin: 0;
   color: #082b58;
-  font-size: 21px;
+  font-size: 19px;
   font-weight: 800;
   letter-spacing: -0.4px;
 }
 
 .delete-description {
-  margin-top: 12px;
+  margin: 10px 0 0;
   color: #64748b;
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .delete-description strong {
@@ -572,9 +941,99 @@ watch(
 }
 
 .delete-warning {
-  margin-top: 12px;
+  margin: 9px 0 0;
   color: #dc2626;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
+}
+
+.delete-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 24px 18px;
+}
+
+.delete-footer :deep(.v-btn) {
+  min-height: 34px;
+  text-transform: none;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+/* Responsive */
+
+@media (max-width: 960px) {
+  .product-layout {
+    margin: -8px;
+  }
+
+  .product-layout > .v-col {
+    padding: 8px;
+  }
+}
+
+@media (max-width: 600px) {
+  .product-gallery,
+  .gallery-placeholder {
+    min-height: 280px;
+  }
+
+  .main-product-image {
+    height: 280px !important;
+  }
+
+  .product-thumbnail {
+    width: 60px;
+    height: 60px;
+  }
+
+  .product-title {
+    font-size: 27px;
+  }
+
+  .price-panel {
+    padding: 14px;
+  }
+
+  .price-grid {
+    gap: 6px;
+  }
+
+  .price-box {
+    padding: 9px;
+  }
+
+  .price-box strong {
+    font-size: 14px;
+  }
+
+  .product-intro {
+    font-size: 12px;
+  }
+
+  .admin-panel {
+    padding: 12px 14px;
+  }
+
+  .admin-setting-row {
+    padding: 10px 0;
+  }
+
+  .delete-content {
+    padding: 18px 18px 10px;
+  }
+
+  .delete-footer {
+    padding: 10px 18px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .product-thumbnail {
+    transition: none;
+  }
 }
 </style>
