@@ -51,14 +51,33 @@ export async function updateProduct(
 
 // Eliminar producto
 export async function deleteProduct(
-  id: string,
+  productId: string,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('products')
-    .delete()
-    .eq('id', id)
+  const { data, error } = await supabase.functions.invoke(
+    'delete-product',
+    {
+      body: { productId },
+    },
+  )
 
-  if (error) throw error
+  if (error) {
+    let message = error.message
+
+    const context = error.context
+
+    if (context instanceof Response) {
+      const responseBody = await context.json().catch(() => null)
+      message = responseBody?.error ?? message
+    }
+
+    throw new Error(message)
+  }
+
+  if (!data?.success) {
+    throw new Error(
+      data?.error ?? 'No se pudo eliminar el producto.',
+    )
+  }
 }
 
 export async function getProductBySlugFromApi(

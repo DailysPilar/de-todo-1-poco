@@ -1,7 +1,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getProductBySlugFromApi } from '@/api/products'
 import type { DatabaseProduct } from '@/types/databaseProduct'
 import { useAuthStore } from '@/stores/auth'
@@ -10,11 +10,43 @@ import {
   getProductImagesWithUrls,
   type ProductImageWithUrl,
 } from '@/api/productImages'
-
+import { deleteProduct } from '@/api/products'
 const route = useRoute()
+const router = useRouter()
 const authStore = useAuthStore()
 const editDialog = ref(false)
+const deleteDialog = ref(false)
+const deleting = ref(false)
+const deleteError = ref('')
 
+function openDeleteDialog() {
+  if (!authStore.isAdmin || !product.value) return
+
+  deleteError.value = ''
+  deleteDialog.value = true
+}
+
+async function confirmDeleteProduct() {
+  if (!authStore.isAdmin || !product.value || deleting.value) return
+
+  deleting.value = true
+  deleteError.value = ''
+
+  try {
+    await deleteProduct(product.value.id)
+
+    deleteDialog.value = false
+
+    await router.push('/catalogo')
+  } catch (error) {
+    deleteError.value =
+      error instanceof Error
+        ? error.message
+        : 'No se pudo eliminar el producto.'
+  } finally {
+    deleting.value = false
+  }
+}
 async function refreshProduct() {
   product.value = await getProductBySlugFromApi(
     String(route.params.slug),
@@ -201,6 +233,16 @@ watch(
           >
             Editar producto
           </v-btn>
+          <v-btn
+            v-if="authStore.isAdmin"
+            color="error"
+            variant="tonal"
+            rounded="lg"
+            prepend-icon="mdi-trash-can-outline"
+            @click="openDeleteDialog"
+          >
+            Eliminar producto
+          </v-btn>
 
         <p class="product-intro mt-4">
           {{ product.description || 'Consulta los detalles de este producto.' }}
@@ -288,12 +330,75 @@ watch(
       Este producto no está disponible.
     </v-alert>
   </v-container>
+      <v-dialog
+      v-model="deleteDialog"
+      max-width="440"
+      persistent
+    >
+      <v-card class="delete-dialog" rounded="xl">
+        <v-card-text class="pa-6">
+          <div class="delete-icon">
+            <v-icon
+              icon="mdi-trash-can-outline"
+              size="30"
+              color="error"
+            />
+          </div>
+
+          <h2 class="delete-title">
+            ¿Eliminar este producto?
+          </h2>
+
+          <p class="delete-description">
+            Estás a punto de eliminar
+            <strong>{{ product?.name }}</strong>.
+          </p>
+
+          <p class="delete-warning">
+            Esta acción es permanente y no se puede deshacer.
+          </p>
+
+          <v-alert
+            v-if="deleteError"
+            type="error"
+            variant="tonal"
+            density="compact"
+            class="mt-4"
+          >
+            {{ deleteError }}
+          </v-alert>
+        </v-card-text>
+
+        <v-card-actions class="px-6 pb-6 pt-0">
+          <v-btn
+            variant="outlined"
+            rounded="lg"
+            class="flex-grow-1"
+            :disabled="deleting"
+            @click="deleteDialog = false"
+          >
+            Cancelar
+          </v-btn>
+
+          <v-btn
+            color="error"
+            variant="flat"
+            rounded="lg"
+            class="flex-grow-1"
+            :loading="deleting"
+            @click="confirmDeleteProduct"
+          >
+            Sí, eliminar
+          </v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
   <ProductFormDialog
-  v-if="authStore.isAdmin && product"
-  v-model="editDialog"
-  :product="product"
-  @saved="refreshProduct"
-/>
+    v-if="authStore.isAdmin && product"
+    v-model="editDialog"
+    :product="product"
+    @saved="refreshProduct"
+  />
 </template>
 
 <style scoped>
@@ -432,5 +537,44 @@ watch(
 .product-thumbnail--active {
   border-color: #087df1;
   box-shadow: 0 3px 12px rgba(8, 125, 241, 0.15);
+}
+.delete-dialog {
+  border: 1px solid #fee2e2;
+}
+
+.delete-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 20px;
+  border-radius: 18px;
+  background: #fef2f2;
+}
+
+.delete-title {
+  color: #082b58;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+}
+
+.delete-description {
+  margin-top: 12px;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.delete-description strong {
+  color: #082b58;
+}
+
+.delete-warning {
+  margin-top: 12px;
+  color: #dc2626;
+  font-size: 12px;
+  font-weight: 600;
 }
 </style>
