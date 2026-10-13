@@ -12,7 +12,6 @@ const productsStore = useProductsStore()
 const authStore = useAuthStore()
 
 const productDialog = ref(false)
-const productSavedMessage = ref(false)
 
 const getSearchFromRoute = () => {
   const value = route.query.q
@@ -133,8 +132,6 @@ function openProductDialog() {
 }
 
 async function onProductSaved() {
-  productSavedMessage.value = true
-
   try {
     await productsStore.fetchProducts()
   } catch (error) {
@@ -366,24 +363,6 @@ function clearFilters() {
       v-model="productDialog"
       @saved="onProductSaved"
     />
-
-    <v-snackbar
-      v-model="productSavedMessage"
-      color="success"
-      location="bottom right"
-      :timeout="3500"
-    >
-      Producto guardado correctamente.
-
-      <template #actions>
-        <v-btn
-          variant="text"
-          @click="productSavedMessage = false"
-        >
-          Cerrar
-        </v-btn>
-      </template>
-    </v-snackbar>
   </div>
 </template>
 

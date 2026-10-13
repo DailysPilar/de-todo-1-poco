@@ -5,7 +5,8 @@ import {
   changePassword,
   requestPasswordReset,
 } from '@/api/auth'
-
+import { useNotificationsStore } from '@/stores/notifications'
+const notifications = useNotificationsStore()
 const props = defineProps<{
   modelValue: boolean
   mode: 'change' | 'reset'
@@ -74,11 +75,16 @@ async function submit() {
     } else {
       await changePassword(newPassword.value)
 
-      successMessage.value =
-        'Contraseña actualizada correctamente.'
-
       newPassword.value = ''
       confirmPassword.value = ''
+
+      closeDialog()
+
+      notifications.notify(
+        'Contraseña actualizada',
+        'Tu contraseña se cambió correctamente.',
+        'success',
+      )
     }
   } catch (error) {
     errorMessage.value =

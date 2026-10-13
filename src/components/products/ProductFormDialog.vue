@@ -11,7 +11,7 @@ import type {
   ProductStatus,
 } from '@/types/databaseProduct'
 import ProductImagesManager from '@/components/products/ProductImagesManager.vue'
-
+import { useNotificationsStore } from '@/stores/notifications'
 type Currency = 'CUP' | 'USD' | 'EUR'
 
 const props = defineProps<{
@@ -25,7 +25,7 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
-
+const notifications = useNotificationsStore()
 const dialog = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit('update:modelValue', value),
@@ -206,7 +206,13 @@ function formatRate(value: number) {
     maximumFractionDigits: 4,
   }).format(value)
 }
+function generateSlugSuffix(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID().slice(0, 8)
+  }
 
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+}
 async function saveProduct() {
   if (!authStore.isAdmin || saving.value) return
 
@@ -262,7 +268,7 @@ async function saveProduct() {
     category_id: categoryId.value,
     slug:
       props.product?.slug ??
-      `${slug}-${crypto.randomUUID().slice(0, 8)}`,
+      `${slug}-${generateSlugSuffix()}`,
     description: description.value.trim() || null,
     price_cup: parsed.CUP,
     price_usd: parsed.USD,
@@ -275,7 +281,9 @@ async function saveProduct() {
   saving.value = true
 
   try {
-    if (props.product) {
+    const wasEditing = editing.value
+
+    if (wasEditing && props.product) {
       await updateProduct(props.product.id, payload)
     } else {
       await createProduct(payload)
@@ -283,6 +291,14 @@ async function saveProduct() {
 
     emit('saved')
     dialog.value = false
+
+    notifications.notify(
+      wasEditing ? 'Producto actualizado' : 'Producto creado',
+      wasEditing
+        ? 'Los cambios del producto se guardaron correctamente.'
+        : 'El producto se creó correctamente en la tienda.',
+      'success',
+    )
   } catch (error) {
     errorMessage.value =
       error instanceof Error
