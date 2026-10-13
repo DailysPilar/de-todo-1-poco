@@ -7,22 +7,13 @@ import logo from '@/assets/branding/logo.png'
   <section class="hero-section">
     <v-container class="hero-container">
       <div class="hero-banner">
-        <!-- Elementos decorativos -->
         <div class="hero-decoration hero-decoration-one"></div>
         <div class="hero-decoration hero-decoration-two"></div>
 
-        <v-row align="center" class="hero-row">
-          <!-- Contenido -->
-          <v-col
-            cols="12"
-            md="7"
-            class="hero-content"
-          >
+        <div class="hero-main">
+          <div class="hero-content">
             <div class="hero-eyebrow">
-              <v-icon
-                icon="mdi-shopping-outline"
-                size="16"
-              />
+              <v-icon icon="mdi-shopping-outline" size="16" />
               Tu tienda online en Cuba
             </div>
 
@@ -33,49 +24,38 @@ import logo from '@/assets/branding/logo.png'
 
             <p class="hero-description">
               Energía, tecnología, herramientas,
-              electrodomésticos y mucho más. Descubre todo
-              lo que tenemos para ti.
+              electrodomésticos y mucho más.
+              Descubre todo lo que tenemos para ti.
             </p>
+          </div>
 
-            <div class="hero-actions">
-              <v-btn
-                to="/catalogo"
-                color="secondary"
-                size="large"
-                rounded="lg"
-                elevation="0"
-                class="hero-button"
-              >
-                Explorar catálogo
-
-                <v-icon
-                  end
-                  icon="mdi-arrow-up-right"
-                />
-              </v-btn>
-            </div>
-          </v-col>
-
-          <!-- Logo de la tienda -->
-          <v-col
-            cols="12"
-            md="5"
-            class="hero-visual"
-          >
-            <div class="hero-logo-wrapper">
+          <div class="hero-visual">
+            <div id="home-hero-logo" class="hero-logo-wrapper">
               <div class="hero-logo-glow"></div>
-
               <v-img
                 :src="logo"
                 alt="D'todo 1 poco"
                 class="hero-logo"
                 width="100%"
-                max-width="280"
                 contain
               />
             </div>
-          </v-col>
-        </v-row>
+          </div>
+        </div>
+
+        <div class="hero-actions">
+          <v-btn
+            to="/catalogo"
+            color="secondary"
+            size="large"
+            rounded="lg"
+            elevation="0"
+            class="hero-button"
+          >
+            Explorar catálogo
+            <v-icon end icon="mdi-arrow-up-right" />
+          </v-btn>
+        </div>
       </div>
     </v-container>
   </section>
@@ -84,7 +64,7 @@ import logo from '@/assets/branding/logo.png'
 <style scoped>
 .hero-section {
   background: #f5f8fc;
-  padding: 22px 0 8px;
+  padding: 16px 0 8px;
 }
 
 .hero-container {
@@ -104,17 +84,20 @@ import logo from '@/assets/branding/logo.png'
     #2479ec 100%
   );
   box-shadow: 0 16px 40px rgba(16, 45, 96, 0.12);
+  padding: 38px 48px;
 }
 
-.hero-row {
+.hero-main {
   position: relative;
   z-index: 2;
-  margin: 0;
-  min-height: 310px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 24px;
 }
 
 .hero-content {
-  padding: 38px 30px 38px 48px;
+  min-width: 0;
 }
 
 .hero-eyebrow {
@@ -151,21 +134,14 @@ import logo from '@/assets/branding/logo.png'
   font-size: 15px;
   line-height: 1.65;
   margin-top: 16px;
-  margin-bottom: 23px;
-}
-
-.hero-button {
-  color: #102d60 !important;
-  font-weight: 750;
-  text-transform: none;
-  letter-spacing: 0;
+  margin-bottom: 0;
 }
 
 .hero-visual {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 18px 24px;
+  min-width: 0;
 }
 
 .hero-logo-wrapper {
@@ -188,9 +164,20 @@ import logo from '@/assets/branding/logo.png'
 .hero-logo {
   position: relative;
   z-index: 1;
-  filter: drop-shadow(
-    0 14px 20px rgba(0, 0, 0, 0.2)
-  );
+  filter: drop-shadow(0 14px 20px rgba(0, 0, 0, 0.2));
+}
+
+.hero-actions {
+  position: relative;
+  z-index: 2;
+  margin-top: 24px;
+}
+
+.hero-button {
+  color: #102d60 !important;
+  font-weight: 750;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .hero-decoration {
@@ -217,58 +204,81 @@ import logo from '@/assets/branding/logo.png'
 }
 
 @media (max-width: 959px) {
-  .hero-content {
-    padding: 32px 28px 12px;
+  .hero-banner {
+    padding: 28px;
   }
 
-  .hero-visual {
-    padding: 8px 20px 24px;
+  .hero-main {
+    grid-template-columns: minmax(0, 1fr) 190px;
+    gap: 12px;
   }
 
-  .hero-logo-wrapper {
-    width: 205px;
-  }
-
-  .hero-row {
-    min-height: auto;
+  .hero-title {
+    font-size: 35px;
   }
 }
 
 @media (max-width: 600px) {
   .hero-section {
-    padding: 12px 0 0;
+    padding: 4px 0 0;
   }
 
   .hero-banner {
-    border-radius: 18px;
+    padding: 18px 16px;
+    border-radius: 16px;
   }
 
-  .hero-content {
-    padding: 26px 20px 4px;
+  .hero-main {
+    grid-template-columns: minmax(0, 1fr) 130px;
+    gap: 8px;
   }
 
   .hero-eyebrow {
-    font-size: 11px;
-    margin-bottom: 13px;
+    gap: 4px;
+    padding: 5px 8px;
+    font-size: 9px;
+    margin-bottom: 10px;
   }
 
   .hero-title {
-    font-size: clamp(29px, 8vw, 37px);
-    letter-spacing: -0.8px;
+    font-size: clamp(21px, 6vw, 29px);
+    line-height: 1.17;
+    letter-spacing: -0.6px;
   }
 
   .hero-description {
-    font-size: 13px;
-    margin-top: 13px;
-    margin-bottom: 19px;
-  }
-
-  .hero-visual {
-    padding: 8px 12px 18px;
+    font-size: 11px;
+    line-height: 1.5;
+    margin-top: 9px;
   }
 
   .hero-logo-wrapper {
-    width: 155px;
+    width: 100%;
+    max-width: 130px;
+  }
+
+  .hero-actions {
+    margin-top: 14px;
+  }
+
+  .hero-button {
+    width: 100%;
+    height: 40px !important;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 360px) {
+  .hero-main {
+    grid-template-columns: minmax(0, 1fr) 96px;
+  }
+
+  .hero-title {
+    font-size: 20px;
+  }
+
+  .hero-eyebrow {
+    font-size: 8px;
   }
 }
 </style>

@@ -36,3 +36,17 @@ export function buildProductWhatsAppUrl(
 
   return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`
 }
+
+export function buildGeneralWhatsAppUrl(
+  phoneNumber: string,
+): string {
+  const normalizedPhone = phoneNumber.replace(/\D/g, '')
+
+  const message = [
+    "¡Hola! Estoy interesado en algunos productos de D' todo 1 poco.",
+    'Me gustaría conocer más información sobre los productos que tienen disponibles, sus precios y cómo puedo realizar una compra.',
+    '¡Muchas gracias!',
+  ].join('\n')
+
+  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`
+}

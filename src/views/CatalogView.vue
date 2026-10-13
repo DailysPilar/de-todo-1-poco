@@ -191,18 +191,22 @@ function clearFilters() {
       <section class="filters-card">
         <div class="filters-heading">
           <div class="filters-title">
-            <div class="filters-title">
-              <div class="filters-icon">
-                <v-icon icon="mdi-tune-variant" size="17" />
-              </div>
+            <div class="filters-icon">
+              <v-icon icon="mdi-tune-variant" size="17" />
+            </div>
 
-              <h2>Filtrar por nombre o categoría</h2>
+            <div class="filters-title-copy">
+              <span class="filters-eyebrow">
+                FILTROS DEL CATÁLOGO
+              </span>
+
+              <h2>Encuentra productos rápidamente</h2>
             </div>
           </div>
 
           <v-btn
             v-if="hasActiveFilters"
-            variant="text"
+            variant="tonal"
             color="primary"
             size="small"
             class="clear-button"
@@ -233,6 +237,7 @@ function clearFilters() {
               v-model="selectedCategory"
               :items="categoryOptions"
               label="Categoría"
+              prepend-inner-icon="mdi-shape-outline"
               variant="outlined"
               density="comfortable"
               hide-details
@@ -396,9 +401,9 @@ function clearFilters() {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 215px;
-  padding: 34px 40px;
-  margin-bottom: 24px;
+  min-height: 180px;
+  padding: 26px 32px;
+  margin-bottom: 20px;
   overflow: hidden;
   border-radius: 22px;
   background: linear-gradient(
@@ -412,14 +417,14 @@ function clearFilters() {
 .hero-content {
   position: relative;
   z-index: 2;
-  max-width: 650px;
+  max-width: 560px;
 }
 
 .hero-eyebrow {
   display: block;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   color: #9ac9ff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 800;
   letter-spacing: 1.3px;
 }
@@ -427,25 +432,25 @@ function clearFilters() {
 .hero-content h1 {
   margin: 0;
   color: #fff;
-  font-size: clamp(26px, 3vw, 38px);
+  font-size: clamp(24px, 2.7vw, 34px);
   font-weight: 850;
   letter-spacing: -1px;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .hero-content p {
   max-width: 480px;
-  margin-top: 12px;
+  margin-top: 8px;
   color: #d3e3f7;
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .hero-detail {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 20px;
+  gap: 6px;
+  margin-top: 13px;
   color: #ffbf2e;
   font-size: 12px;
   font-weight: 650;
@@ -458,8 +463,8 @@ function clearFilters() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 170px;
-  height: 170px;
+  width: 145px;
+  height: 145px;
   color: rgba(255, 255, 255, 0.18);
   transform: translateY(-50%);
 }
@@ -471,24 +476,24 @@ function clearFilters() {
 }
 
 .decoration-circle--one {
-  width: 150px;
-  height: 150px;
+  width: 128px;
+  height: 128px;
 }
 
 .decoration-circle--two {
-  width: 215px;
-  height: 215px;
+  width: 185px;
+  height: 185px;
 }
 
 /* Filtros */
 
 .filters-card {
-  padding: 24px;
-  margin-bottom: 32px;
+  padding: 16px 16px 20px;
+  margin-bottom: 28px;
   background: #fff;
   border: 1px solid #e5ecf5;
-  border-radius: 18px;
-  box-shadow: 0 4px 20px rgba(8, 43, 88, 0.025);
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(8, 43, 88, 0.05);
 }
 
 .filters-heading {
@@ -496,7 +501,11 @@ function clearFilters() {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 20px;
+  padding: 11px 12px;
+  margin-bottom: 12px;
+  border: 1px solid #e2ecf8;
+  border-radius: 12px;
+  background: #f5f9ff;
 }
 
 .filters-title {
@@ -509,16 +518,29 @@ function clearFilters() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 12px;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
   color: #087df1;
-  background: #eaf3ff;
+  background: #e2efff;
+}
+
+.filters-title-copy {
+  min-width: 0;
+}
+
+.filters-eyebrow {
+  display: block;
+  margin-bottom: 2px;
+  color: #087df1;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.9px;
 }
 
 .filters-title h2 {
   color: #082b58;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
 }
 
@@ -529,20 +551,25 @@ function clearFilters() {
 }
 
 .filters-row {
-  margin-bottom: -12px;
+  margin: 0 -6px;
+}
+
+.filters-row > :deep(.v-col) {
+  padding: 6px;
 }
 
 .filter-field :deep(.v-field) {
   border-radius: 12px;
-  background: #fbfcff;
+  background: #f8fbff;
 }
 
 .filter-field :deep(.v-field:hover) {
-  background: #f5f9ff;
+  background: #f1f7ff;
 }
 
 .clear-button {
   text-transform: none;
+  min-height: 32px;
   font-weight: 700;
   letter-spacing: 0;
 }
@@ -653,22 +680,29 @@ function clearFilters() {
 
 @media (max-width: 600px) {
   .catalog-page {
-    padding: 16px 0 50px;
+    padding: 4px 0 50px;
   }
 
   .catalog-hero {
-    min-height: 190px;
-    padding: 26px 22px;
+    min-height: 164px;
+    padding: 20px;
     border-radius: 16px;
-    margin-bottom: 16px;
+    margin-bottom: 14px;
   }
 
   .hero-content h1 {
-    font-size: 27px;
+    font-size: 24px;
   }
 
   .hero-content p {
-    font-size: 12px;
+    margin-top: 7px;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .hero-detail {
+    margin-top: 10px;
+    font-size: 11px;
   }
 
   .hero-decoration {
@@ -677,17 +711,21 @@ function clearFilters() {
   }
 
   .filters-card {
-    padding: 16px;
+    padding: 14px 14px 18px;
     margin-bottom: 26px;
   }
 
   .filters-heading {
     align-items: flex-start;
-    flex-wrap: wrap;
+    padding: 10px;
   }
 
   .filters-title h2 {
-    font-size: 14px;
+    font-size: 13px;
+  }
+
+  .filters-eyebrow {
+    font-size: 8px;
   }
 
   .results-heading {

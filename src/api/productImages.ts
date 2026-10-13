@@ -48,9 +48,9 @@ export async function uploadProductImage(
       ? 'webp'
       : 'jpg'
 
-  const storagePath =
-    `${productId}/${crypto.randomUUID()}.${extension}`
-
+const storagePath =
+  `${productId}/${generateImageId()}.${extension}`
+  
   const { error: uploadError } = await supabase.storage
     .from('product-images')
     .upload(storagePath, file, {
@@ -153,4 +153,11 @@ export async function getProductImagesWithUrls(
 
     return url ? [{ ...image, url }] : []
   })
+}
+function generateImageId(): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }

@@ -40,7 +40,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="featured-section">
+  <section id="destacados" class="featured-section">
     <v-container>
     <div class="section-heading">
     <div class="section-heading-text">

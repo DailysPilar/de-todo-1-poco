@@ -92,3 +92,62 @@ export async function saveStoreWhatsAppNumber(
 
   return data.whatsapp_number
 }
+
+export async function getStoreFacebookUrl(): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('facebook_url')
+    .eq('id', 1)
+    .single()
+
+  if (error) throw error
+
+  return data.facebook_url || null
+}
+
+export async function saveStoreFacebookUrl(
+  facebookUrl: string,
+): Promise<string | null> {
+  const normalizedUrl = facebookUrl.trim()
+
+  if (normalizedUrl) {
+    let url: URL
+
+    try {
+      url = new URL(normalizedUrl)
+    } catch {
+      throw new Error('Introduce una URL válida de Facebook.')
+    }
+
+    const allowedHosts = [
+      'facebook.com',
+      'www.facebook.com',
+      'm.facebook.com',
+      'fb.com',
+      'www.fb.com',
+    ]
+
+    if (
+      url.protocol !== 'https:' ||
+      !allowedHosts.includes(url.hostname)
+    ) {
+      throw new Error(
+        'Introduce un enlace HTTPS válido de Facebook.',
+      )
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('store_settings')
+    .update({
+      facebook_url: normalizedUrl || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', 1)
+    .select('facebook_url')
+    .single()
+
+  if (error) throw error
+
+  return data.facebook_url
+}

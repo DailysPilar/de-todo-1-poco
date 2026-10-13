@@ -990,16 +990,16 @@ async function saveProduct() {
   flex-shrink: 0;
 }
 
-/* Footer compacto */
+/* Footer */
 
 .editor-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 0;
-  padding: 9px 18px;
-  background: #fff;
+  min-height: 54px;
+  padding: 8px 18px;
+  background: #fafcff;
 }
 
 .footer-hint {
@@ -1018,8 +1018,8 @@ async function saveProduct() {
 }
 
 .footer-actions :deep(.v-btn) {
-  min-height: 34px;
-  padding-inline: 13px;
+  min-height: 38px;
+  padding-inline: 15px;
   text-transform: none;
   font-size: 12px;
   font-weight: 700;
@@ -1086,7 +1086,8 @@ async function saveProduct() {
   }
 
   .editor-footer {
-    padding: 8px 12px;
+    min-height: 56px;
+    padding: 9px 14px;
   }
 
   .footer-hint {
@@ -1095,12 +1096,15 @@ async function saveProduct() {
 
   .footer-actions {
     width: 100%;
-    justify-content: flex-end;
+    justify-content: stretch;
+    gap: 8px;
   }
 
   .footer-actions :deep(.v-btn) {
-    font-size: 11px;
+    flex: 1;
+    min-height: 38px;
     padding-inline: 10px;
+    font-size: 11px;
   }
 }
 

@@ -2,6 +2,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import {
+  getStoreFacebookUrl,
+  saveStoreFacebookUrl,
   getCurrencySettings,
   saveCurrencySettings,
   saveStoreWhatsAppNumber,
@@ -37,7 +39,11 @@ const ratesSuccess = ref('')
 const whatsappError = ref('')
 const whatsappSuccess = ref('')
 const loadError = ref('')
-
+const facebookUrl = ref('')
+const savingFacebook = ref(false)
+const facebookError = ref('')
+const facebookSuccess = ref(false)
+const activeSettingsPanel = ref('whatsapp')
 const whatsappValid = computed(() => {
   const normalized = whatsappNumber.value.replace(/[\s()+-]/g, '')
 
@@ -51,7 +57,8 @@ const busy = computed(
   () =>
     loading.value ||
     savingRates.value ||
-    savingWhatsApp.value,
+    savingWhatsApp.value ||
+    savingFacebook.value,
 )
 
 watch(
@@ -65,6 +72,9 @@ watch(
     ratesSuccess.value = ''
     whatsappError.value = ''
     whatsappSuccess.value = ''
+    facebookError.value = ''
+    facebookSuccess.value = false
+    activeSettingsPanel.value = 'whatsapp'
 
     try {
       const settings = await getCurrencySettings()
@@ -72,6 +82,7 @@ watch(
       usdRate.value = settings.usd_to_cup
       eurRate.value = settings.eur_to_cup
       whatsappNumber.value = settings.whatsapp_number || ''
+      facebookUrl.value = (await getStoreFacebookUrl()) ?? ''
     } catch (error) {
       loadError.value =
         error instanceof Error
@@ -156,6 +167,33 @@ async function saveWhatsApp() {
     savingWhatsApp.value = false
   }
 }
+
+async function saveFacebook() {
+  if (!authStore.isAdmin || busy.value) return
+
+  savingFacebook.value = true
+  facebookError.value = ''
+  facebookSuccess.value = false
+
+  try {
+    const savedUrl = await saveStoreFacebookUrl(
+      facebookUrl.value,
+    )
+
+    facebookUrl.value = savedUrl ?? ''
+    facebookSuccess.value = true
+
+    emit('saved')
+  } catch (error) {
+    facebookError.value =
+      error instanceof Error
+        ? error.message
+        : 'No se pudo guardar Facebook.'
+  } finally {
+    savingFacebook.value = false
+  }
+}
+
 </script>
 
 <template>
@@ -188,7 +226,7 @@ async function saveWhatsApp() {
           variant="text"
           size="small"
           aria-label="Cerrar configuración"
-          :disabled="savingRates || savingWhatsApp"
+          :disabled="busy"
           @click="dialog = false"
         />
       </div>
@@ -207,222 +245,338 @@ async function saveWhatsApp() {
           {{ loadError }}
         </v-alert>
 
-        <!-- WhatsApp -->
-        <section class="settings-section">
-          <div class="section-heading">
-            <div class="section-icon whatsapp-icon">
-              <v-icon
-                icon="mdi-whatsapp"
-                size="20"
-              />
-            </div>
-
-            <div>
-              <h3>WhatsApp de la tienda</h3>
-              <p>Recibe las consultas de tus clientes.</p>
-            </div>
-          </div>
-
-          <v-alert
-            v-if="whatsappError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            rounded="lg"
-            class="mb-3"
+        <v-expansion-panels
+          v-model="activeSettingsPanel"
+          variant="accordion"
+          class="settings-panels"
+        >
+          <!-- WhatsApp -->
+          <v-expansion-panel
+            value="whatsapp"
+            class="settings-panel"
           >
-            {{ whatsappError }}
-          </v-alert>
-
-          <v-alert
-            v-if="whatsappSuccess"
-            type="success"
-            variant="tonal"
-            density="compact"
-            rounded="lg"
-            class="mb-3"
-          >
-            {{ whatsappSuccess }}
-          </v-alert>
-
-          <v-form @submit.prevent="saveWhatsApp">
-            <div class="field-label">
-              Número de WhatsApp
-            </div>
-
-            <v-text-field
-              v-model="whatsappNumber"
-              variant="outlined"
-              density="compact"
-              rounded="lg"
-              placeholder="Ej. 5351234567"
-              prepend-inner-icon="mdi-phone-outline"
-              inputmode="tel"
-              autocomplete="tel"
-              hide-details
-              :error="!whatsappValid"
-              :disabled="busy"
-            />
-
-            <p class="field-help">
-              Introduce el código de país y el número,
-              sin el signo +. Déjalo vacío para desactivar
-              las consultas.
-            </p>
-
-            <v-btn
-              type="submit"
-              color="#19B56B"
-              variant="flat"
-              rounded="lg"
-              size="small"
-              class="save-button text-white"
-              prepend-icon="mdi-content-save-outline"
-              :loading="savingWhatsApp"
-              :disabled="
-                busy ||
-                !whatsappValid ||
-                !authStore.isAdmin ||
-                !!loadError
-              "
-            >
-              Guardar WhatsApp
-            </v-btn>
-          </v-form>
-        </section>
-
-        <v-divider class="section-divider" />
-
-        <!-- Monedas -->
-        <section class="settings-section">
-          <div class="section-heading">
-            <div class="section-icon currency-icon">
-              <v-icon
-                icon="mdi-currency-usd"
-                size="20"
-              />
-            </div>
-
-            <div>
-              <h3>Tasas de cambio</h3>
-              <p>Conversión de USD y EUR a pesos cubanos.</p>
-            </div>
-          </div>
-
-          <v-alert
-            v-if="ratesError"
-            type="error"
-            variant="tonal"
-            density="compact"
-            rounded="lg"
-            class="mb-3"
-          >
-            {{ ratesError }}
-          </v-alert>
-
-          <v-alert
-            v-if="ratesSuccess"
-            type="success"
-            variant="tonal"
-            density="compact"
-            rounded="lg"
-            class="mb-3"
-          >
-            {{ ratesSuccess }}
-          </v-alert>
-
-          <v-form @submit.prevent="saveRates">
-            <div class="rates-grid">
-              <div class="rate-field">
-                <div class="rate-label">
-                  <span>Dólar estadounidense</span>
-
-                  <v-chip
-                    size="x-small"
-                    variant="tonal"
-                    color="primary"
-                  >
-                    USD
-                  </v-chip>
+            <v-expansion-panel-title>
+              <div class="section-heading panel-heading">
+                <div class="section-icon whatsapp-icon">
+                  <v-icon
+                    icon="mdi-whatsapp"
+                    size="20"
+                  />
                 </div>
 
-                <v-text-field
-                  v-model.number="usdRate"
-                  type="number"
-                  min="0.0001"
-                  step="any"
-                  variant="outlined"
+                <div>
+                  <h3>WhatsApp de la tienda</h3>
+                  <p>Recibe las consultas de tus clientes.</p>
+                </div>
+              </div>
+            </v-expansion-panel-title>
+
+            <v-expansion-panel-text>
+              <section class="settings-section">
+                <v-alert
+                  v-if="whatsappError"
+                  type="error"
+                  variant="tonal"
                   density="compact"
                   rounded="lg"
-                  suffix="CUP"
-                  placeholder="Tasa USD"
-                  hide-details
-                  :disabled="busy"
-                />
-              </div>
+                  class="mb-3"
+                >
+                  {{ whatsappError }}
+                </v-alert>
 
-              <div class="rate-field">
-                <div class="rate-label">
-                  <span>Euro</span>
+                <v-alert
+                  v-if="whatsappSuccess"
+                  type="success"
+                  variant="tonal"
+                  density="compact"
+                  rounded="lg"
+                  class="mb-3"
+                >
+                  {{ whatsappSuccess }}
+                </v-alert>
 
-                  <v-chip
-                    size="x-small"
-                    variant="tonal"
-                    color="primary"
-                  >
-                    EUR
-                  </v-chip>
+                <v-form @submit.prevent="saveWhatsApp">
+                  <div class="field-label">
+                    Número de WhatsApp
+                  </div>
+
+                  <v-text-field
+                    v-model="whatsappNumber"
+                    variant="outlined"
+                    density="compact"
+                    rounded="lg"
+                    placeholder="Ej. 5351234567"
+                    prepend-inner-icon="mdi-phone-outline"
+                    inputmode="tel"
+                    autocomplete="tel"
+                    hide-details
+                    :error="!whatsappValid"
+                    :disabled="busy"
+                  />
+
+                  <p class="field-help">
+                    Introduce el código de país y el número,
+                    sin el signo +. Déjalo vacío para desactivar
+                    las consultas.
+                  </p>
+
+                  <div class="save-button-row">
+                    <v-btn
+                      type="submit"
+                      color="#19B56B"
+                      variant="flat"
+                      rounded="lg"
+                      size="small"
+                      class="save-button text-white"
+                      prepend-icon="mdi-content-save-outline"
+                      :loading="savingWhatsApp"
+                      :disabled="
+                        busy ||
+                        !whatsappValid ||
+                        !authStore.isAdmin ||
+                        !!loadError
+                      "
+                    >
+                      Guardar WhatsApp
+                    </v-btn>
+                  </div>
+                </v-form>
+              </section>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <!-- Facebook -->
+          <v-expansion-panel
+            value="facebook"
+            class="settings-panel"
+          >
+            <v-expansion-panel-title>
+              <div class="section-heading panel-heading">
+                <div class="section-icon facebook-icon">
+                  <v-icon
+                    icon="mdi-facebook"
+                    size="20"
+                  />
                 </div>
 
-                <v-text-field
-                  v-model.number="eurRate"
-                  type="number"
-                  min="0.0001"
-                  step="any"
-                  variant="outlined"
+                <div>
+                  <h3>Página de Facebook</h3>
+                  <p>Comparte el enlace de tu tienda.</p>
+                </div>
+              </div>
+            </v-expansion-panel-title>
+
+            <v-expansion-panel-text>
+              <section class="settings-section">
+                <v-alert
+                  v-if="facebookError"
+                  type="error"
+                  variant="tonal"
                   density="compact"
                   rounded="lg"
-                  suffix="CUP"
-                  placeholder="Tasa EUR"
-                  hide-details
-                  :disabled="busy"
-                />
+                  class="mb-3"
+                >
+                  {{ facebookError }}
+                </v-alert>
+
+                <v-alert
+                  v-if="facebookSuccess"
+                  type="success"
+                  variant="tonal"
+                  density="compact"
+                  rounded="lg"
+                  class="mb-3"
+                >
+                  Página de Facebook guardada correctamente.
+                </v-alert>
+
+                <v-form @submit.prevent="saveFacebook">
+                  <div class="field-label">
+                    Enlace de Facebook
+                  </div>
+
+                  <v-text-field
+                    v-model="facebookUrl"
+                    variant="outlined"
+                    density="compact"
+                    rounded="lg"
+                    placeholder="https://www.facebook.com/tu-pagina"
+                    prepend-inner-icon="mdi-link-variant"
+                    hide-details
+                    :disabled="busy"
+                  />
+
+                  <p class="field-help">
+                    Pega la URL completa de la página de Facebook
+                    de la tienda.
+                  </p>
+
+                  <div class="save-button-row">
+                    <v-btn
+                      type="submit"
+                      color="#087df1"
+                      variant="flat"
+                      rounded="lg"
+                      size="small"
+                      class="save-button"
+                      prepend-icon="mdi-content-save-outline"
+                      :loading="savingFacebook"
+                      :disabled="
+                        busy ||
+                        !authStore.isAdmin ||
+                        !!loadError
+                      "
+                    >
+                      Guardar Facebook
+                    </v-btn>
+                  </div>
+                </v-form>
+              </section>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+
+          <!-- Monedas -->
+          <v-expansion-panel
+            value="rates"
+            class="settings-panel"
+          >
+            <v-expansion-panel-title>
+              <div class="section-heading panel-heading">
+                <div class="section-icon currency-icon">
+                  <v-icon
+                    icon="mdi-currency-usd"
+                    size="20"
+                  />
+                </div>
+
+                <div>
+                  <h3>Tasas de cambio</h3>
+                  <p>Conversión de USD y EUR a pesos cubanos.</p>
+                </div>
               </div>
-            </div>
+            </v-expansion-panel-title>
 
-            <div class="settings-note">
-              <v-icon
-                icon="mdi-information-outline"
-                size="17"
-                color="primary"
-              />
+            <v-expansion-panel-text>
+              <section class="settings-section">
+                <v-alert
+                  v-if="ratesError"
+                  type="error"
+                  variant="tonal"
+                  density="compact"
+                  rounded="lg"
+                  class="mb-3"
+                >
+                  {{ ratesError }}
+                </v-alert>
 
-              <span>
-                Las nuevas tasas se aplicarán al crear o editar
-                productos. Los precios publicados no cambian
-                automáticamente.
-              </span>
-            </div>
+                <v-alert
+                  v-if="ratesSuccess"
+                  type="success"
+                  variant="tonal"
+                  density="compact"
+                  rounded="lg"
+                  class="mb-3"
+                >
+                  {{ ratesSuccess }}
+                </v-alert>
 
-            <v-btn
-              type="submit"
-              color="#087df1"
-              variant="flat"
-              rounded="lg"
-              size="small"
-              class="save-button"
-              prepend-icon="mdi-content-save-outline"
-              :loading="savingRates"
-              :disabled="
-                busy ||
-                !authStore.isAdmin ||
-                !!loadError
-              "
-            >
-              Guardar tasas
-            </v-btn>
-          </v-form>
-        </section>
+                <v-form @submit.prevent="saveRates">
+                  <div class="rates-grid">
+                    <div class="rate-field">
+                      <div class="rate-label">
+                        <span>Dólar estadounidense</span>
+
+                        <v-chip
+                          size="x-small"
+                          variant="tonal"
+                          color="primary"
+                        >
+                          USD
+                        </v-chip>
+                      </div>
+
+                      <v-text-field
+                        v-model.number="usdRate"
+                        type="number"
+                        min="0.0001"
+                        step="any"
+                        variant="outlined"
+                        density="compact"
+                        rounded="lg"
+                        suffix="CUP"
+                        placeholder="Tasa USD"
+                        hide-details
+                        :disabled="busy"
+                      />
+                    </div>
+
+                    <div class="rate-field">
+                      <div class="rate-label">
+                        <span>Euro</span>
+
+                        <v-chip
+                          size="x-small"
+                          variant="tonal"
+                          color="primary"
+                        >
+                          EUR
+                        </v-chip>
+                      </div>
+
+                      <v-text-field
+                        v-model.number="eurRate"
+                        type="number"
+                        min="0.0001"
+                        step="any"
+                        variant="outlined"
+                        density="compact"
+                        rounded="lg"
+                        suffix="CUP"
+                        placeholder="Tasa EUR"
+                        hide-details
+                        :disabled="busy"
+                      />
+                    </div>
+                  </div>
+
+                  <div class="settings-note">
+                    <v-icon
+                      icon="mdi-information-outline"
+                      size="17"
+                      color="primary"
+                    />
+
+                    <span>
+                      Las nuevas tasas se aplicarán al crear o editar
+                      productos. Los precios publicados no cambian
+                      automáticamente.
+                    </span>
+                  </div>
+
+                  <div class="save-button-row">
+                    <v-btn
+                      type="submit"
+                      color="#087df1"
+                      variant="flat"
+                      rounded="lg"
+                      size="small"
+                      class="save-button"
+                      prepend-icon="mdi-content-save-outline"
+                      :loading="savingRates"
+                      :disabled="
+                        busy ||
+                        !authStore.isAdmin ||
+                        !!loadError
+                      "
+                    >
+                      Guardar tasas
+                    </v-btn>
+                  </div>
+                </v-form>
+              </section>
+            </v-expansion-panel-text>
+          </v-expansion-panel>
+        </v-expansion-panels>
       </v-card-text>
 
       <v-divider />
@@ -489,11 +643,39 @@ async function saveWhatsApp() {
   width: 100%;
 }
 
+.settings-panels {
+  gap: 12px;
+}
+
+:deep(.settings-panel) {
+  border: 1px solid #e5ecf5;
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+:deep(.settings-panel::before),
+:deep(.settings-panel:not(:first-child)::after) {
+  display: none;
+}
+
+:deep(.settings-panel .v-expansion-panel-title) {
+  min-height: 68px;
+  padding: 12px;
+}
+
+:deep(.settings-panel .v-expansion-panel-text__wrapper) {
+  padding: 4px 16px 16px;
+}
+
 .section-heading {
   display: flex;
   align-items: center;
   gap: 10px;
   margin-bottom: 17px;
+}
+
+.panel-heading {
+  margin-bottom: 0;
 }
 
 .section-icon {
@@ -513,6 +695,11 @@ async function saveWhatsApp() {
 .currency-icon {
   color: #087df1;
   background: #eaf3ff;
+}
+
+.facebook-icon {
+  color: #1877f2;
+  background: #e8f0fe;
 }
 
 .section-heading h3 {
@@ -549,8 +736,9 @@ async function saveWhatsApp() {
   letter-spacing: 0;
 }
 
-.section-divider {
-  margin: 23px 0;
+.save-button-row {
+  display: flex;
+  justify-content: center;
 }
 
 .rates-grid {
@@ -626,8 +814,5 @@ async function saveWhatsApp() {
     grid-template-columns: 1fr;
   }
 
-  .section-divider {
-    margin: 19px 0;
-  }
 }
 </style>

@@ -1,9 +1,58 @@
 
 <script setup lang="ts">
-import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+
+import { computed, onMounted, ref } from 'vue'
+import {
+  getStoreWhatsAppNumber,
+  getStoreFacebookUrl,
+} from '@/api/settings'
+import { buildGeneralWhatsAppUrl } from '@/lib/whatsapp'
+
+const footerWhatsAppNumber = ref<string | null>(null)
+const footerFacebookUrl = ref<string | null>(null)
+
+const footerWhatsAppUrl = computed(() => {
+  if (!footerWhatsAppNumber.value) return undefined
+
+  return buildGeneralWhatsAppUrl(footerWhatsAppNumber.value)
+})
+
+async function loadFooterSocialLinks() {
+  const [whatsappResult, facebookResult] =
+    await Promise.allSettled([
+      getStoreWhatsAppNumber(),
+      getStoreFacebookUrl(),
+    ])
+
+  footerWhatsAppNumber.value =
+    whatsappResult.status === 'fulfilled'
+      ? whatsappResult.value
+      : null
+
+  footerFacebookUrl.value =
+    facebookResult.status === 'fulfilled'
+      ? facebookResult.value
+      : null
+
+  if (whatsappResult.status === 'rejected') {
+    console.error(
+      'Error cargando WhatsApp del footer:',
+      whatsappResult.reason,
+    )
+  }
+
+  if (facebookResult.status === 'rejected') {
+    console.error(
+      'Error cargando Facebook del footer:',
+      facebookResult.reason,
+    )
+  }
+}
+
+onMounted(loadFooterSocialLinks)
 
 // Configuraremos los enlaces reales más adelante.
 const whatsappNumber = ''
@@ -48,8 +97,8 @@ function goToCategories() {
 
           <div class="footer-socials">
             <v-btn
-              :href="whatsappUrl || undefined"
-              :disabled="!whatsappUrl"
+              :href="footerWhatsAppUrl"
+              :disabled="!footerWhatsAppUrl"
               target="_blank"
               rel="noopener noreferrer"
               icon="mdi-whatsapp"
@@ -60,8 +109,8 @@ function goToCategories() {
             />
 
             <v-btn
-              :href="facebookUrl || undefined"
-              :disabled="!facebookUrl"
+              :href="footerFacebookUrl || undefined"
+              :disabled="!footerFacebookUrl"
               target="_blank"
               rel="noopener noreferrer"
               icon="mdi-facebook"

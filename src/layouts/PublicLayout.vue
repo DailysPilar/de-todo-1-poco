@@ -40,4 +40,10 @@ onMounted(() => {
   min-width: 0;
 }
 
+@media (max-width: 900px) {
+  .public-main {
+    padding-top: 0 !important;
+  }
+}
+
 </style>
