@@ -7,14 +7,28 @@ import { getStoreWhatsAppNumber } from '@/api/settings'
 import { buildGeneralWhatsAppUrl } from '@/lib/whatsapp'
 import CurrencySettingsDialog from '@/components/admin/CurrencySettingsDialog.vue'
 import logo from '@/assets/branding/logo.png'
-
+import AdminPasswordDialogs from '@/components/admin/AdminPasswordDialogs.vue'
 const router = useRouter()
 
 const route = useRoute()
 const heroLogoVisible = ref(true)
 
 let logoObserver: IntersectionObserver | null = null
+const passwordDialog = ref(false)
+const passwordDialogMode = ref<'change' | 'reset'>('change')
 
+function openChangePassword() {
+  if (!authStore.isAdmin) return
+
+  passwordDialogMode.value = 'change'
+  passwordDialog.value = true
+}
+
+function openPasswordReset() {
+  loginDialog.value = false
+  passwordDialogMode.value = 'reset'
+  passwordDialog.value = true
+}
 const showHeaderLogo = computed(() => {
   if (route.path !== '/') return true
 
@@ -347,6 +361,12 @@ async function signOutAdmin() {
                   class="admin-menu-item"
                   @click="currencySettingsDialog = true"
                 />
+                <v-list-item
+                  title="Cambiar contraseña"
+                  prepend-icon="mdi-lock-reset"
+                  class="admin-menu-item"
+                  @click="openChangePassword"
+                />
 
                 <v-list-item
                   prepend-icon="mdi-logout"
@@ -599,6 +619,18 @@ async function signOutAdmin() {
               showPassword = !showPassword
             "
           />
+          <div class="d-flex justify-end mb-3">
+          <v-btn
+            variant="text"
+            color="primary"
+            size="small"
+            class="text-none"
+            :disabled="loginLoading"
+            @click="openPasswordReset"
+          >
+            ¿Olvidaste tu contraseña?
+          </v-btn>
+        </div>
 
           <v-btn
             type="submit"
@@ -625,6 +657,10 @@ async function signOutAdmin() {
     v-if="authStore.isAdmin"
     v-model="currencySettingsDialog"
     @saved="loadWhatsAppNumber"
+  />
+  <AdminPasswordDialogs
+    v-model="passwordDialog"
+    :mode="passwordDialogMode"
   />
 </template>
 
