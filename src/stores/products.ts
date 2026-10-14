@@ -19,6 +19,14 @@ export const useProductsStore = defineStore('products', () => {
     ),
   )
 
+  const categoriesById = computed(
+    () => new Map(categories.value.map((category) => [category.id, category])),
+  )
+
+  function getCategoryById(id: string | null | undefined) {
+    return id ? (categoriesById.value.get(id) ?? null) : null
+  }
+
   function getProductBySlug(slug: string) {
     return products.value.find(
       (product) => product.slug === slug,
@@ -63,6 +71,8 @@ export const useProductsStore = defineStore('products', () => {
     loading,
     error,
     featuredProducts,
+    categoriesById,
+    getCategoryById,
     getProductBySlug,
     fetchProducts,
     fetchCategories,

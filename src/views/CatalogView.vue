@@ -1,13 +1,15 @@
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import type { Category } from '@/api/categories'
 import { useProductsStore } from '@/stores/products'
 import { useAuthStore } from '@/stores/auth'
 import ProductCard from '@/components/products/ProductCard.vue'
 import ProductFormDialog from '@/components/products/ProductFormDialog.vue'
 
 const route = useRoute()
+const router = useRouter()
 const productsStore = useProductsStore()
 const authStore = useAuthStore()
 
@@ -29,14 +31,6 @@ const currencyOptions = [
   { title: 'EUR', value: 'EUR' },
 ]
 
-const categoryOptions = computed(() => [
-  { title: 'Todas las categorías', value: 'all' },
-  ...productsStore.categories.map(category => ({
-    title: category.name,
-    value: category.slug,
-  })),
-])
-
 const hasActiveFilters = computed(() =>
   Boolean(search.value?.trim()) ||
   Boolean(
@@ -49,22 +43,13 @@ const hasActiveFilters = computed(() =>
   ),
 )
 
-const filteredProducts = computed(() => {
+const searchedProducts = computed(() => {
   const searchTerm = (search.value ?? '').trim().toLowerCase()
 
   return productsStore.products.filter(product => {
     const matchesSearch = product.name
       .toLowerCase()
       .includes(searchTerm)
-
-    const category = productsStore.categories.find(
-      item => item.id === product.category_id,
-    )
-
-    const matchesCategory =
-      !selectedCategory.value ||
-      selectedCategory.value === 'all' ||
-      category?.slug === selectedCategory.value
 
     const matchesCurrency =
       !selectedCurrency.value ||
@@ -76,13 +61,112 @@ const filteredProducts = computed(() => {
       (selectedCurrency.value === 'EUR' &&
         product.price_eur !== null)
 
-    return matchesSearch && matchesCategory && matchesCurrency
+    return matchesSearch && matchesCurrency
   })
 })
+
+const activeCategorySlug = computed(() =>
+  selectedCategory.value && selectedCategory.value !== 'all'
+    ? selectedCategory.value
+    : null,
+)
+
+const filteredProducts = computed(() =>
+  activeCategorySlug.value
+    ? searchedProducts.value.filter(
+        product =>
+          productsStore.getCategoryById(product.category_id)?.slug ===
+          activeCategorySlug.value,
+      )
+    : searchedProducts.value,
+)
+
+const categoryCounts = computed(() => {
+  const counts = new Map<string, number>()
+
+  for (const product of searchedProducts.value) {
+    counts.set(
+      product.category_id,
+      (counts.get(product.category_id) ?? 0) + 1,
+    )
+  }
+
+  return counts
+})
+
+interface CategorySection {
+  key: string
+  name: string
+  category: Category | null
+  products: typeof productsStore.products
+}
+
+// Subsecciones sin vacías; los productos sin categoría resoluble van a "Otros"
+const categorySections = computed<CategorySection[]>(() => {
+  const sections: CategorySection[] = productsStore.categories
+    .map(category => ({
+      key: category.id,
+      name: category.name,
+      category,
+      products: filteredProducts.value.filter(
+        product => product.category_id === category.id,
+      ),
+    }))
+    .filter(section => section.products.length)
+
+  const others = filteredProducts.value.filter(
+    product => !productsStore.getCategoryById(product.category_id),
+  )
+
+  if (others.length) {
+    sections.push({
+      key: 'others',
+      name: 'Otros',
+      category: null,
+      products: others,
+    })
+  }
+
+  return sections
+})
+
+const showSections = computed(
+  () => !activeCategorySlug.value && productsStore.categories.length > 0,
+)
+
+const failedThumbs = reactive(new Set<string>())
+
+function categoryImage(category: Category) {
+  return category.image_url || `/images/categories/${category.slug}.jpeg`
+}
+
+function selectCategory(slug: string | null) {
+  const query = { ...route.query }
+
+  if (slug) {
+    query.categoria = slug
+  } else {
+    delete query.categoria
+  }
+
+  router.replace({ query })
+}
 
 const resultsLabel = computed(() => {
   const count = filteredProducts.value.length
   return `${count} ${count === 1 ? 'producto' : 'productos'}`
+})
+
+const resultsTitle = computed(() => {
+  if (activeCategorySlug.value) {
+    return (
+      productsStore.categories.find(
+        category => category.slug === activeCategorySlug.value,
+      )?.name ?? 'Productos'
+    )
+  }
+
+  return search.value?.trim() ? 'Resultados' : 'Todos los productos'
 })
 
 onMounted(async () => {
@@ -141,8 +225,8 @@ async function onProductSaved() {
 
 function clearFilters() {
   search.value = ''
-  selectedCategory.value = null
   selectedCurrency.value = null
+  selectCategory(null)
 }
 </script>
 
@@ -200,22 +284,10 @@ function clearFilters() {
               <h2>Encuentra productos rápidamente</h2>
             </div>
           </div>
-
-          <v-btn
-            v-if="hasActiveFilters"
-            variant="tonal"
-            color="primary"
-            size="small"
-            class="clear-button"
-            prepend-icon="mdi-filter-remove-outline"
-            @click="clearFilters"
-          >
-            Limpiar filtros
-          </v-btn>
         </div>
 
         <v-row class="filters-row">
-          <v-col cols="12" md="8">
+          <v-col cols="12">
             <v-text-field
               v-model="search"
               label="Buscar productos"
@@ -228,35 +300,69 @@ function clearFilters() {
               class="filter-field"
             />
           </v-col>
-
-          <v-col cols="12" sm="6" md="4">
-            <v-select
-              v-model="selectedCategory"
-              :items="categoryOptions"
-              label="Categoría"
-              prepend-inner-icon="mdi-shape-outline"
-              variant="outlined"
-              density="comfortable"
-              hide-details
-              class="filter-field"
-            />
-          </v-col>
         </v-row>
+
+        <!-- Categorías -->
+        <div
+          class="category-bar"
+          role="group"
+          aria-label="Categorías"
+        >
+          <button
+            type="button"
+            class="category-pill"
+            :class="{ 'category-pill--active': !activeCategorySlug }"
+            :aria-pressed="!activeCategorySlug"
+            @click="selectCategory(null)"
+          >
+            <span class="category-thumb category-thumb--all">
+              <v-icon icon="mdi-view-grid-outline" size="22" />
+            </span>
+
+            <span class="category-pill-label">Todos</span>
+
+            <span class="category-pill-count">
+              {{ searchedProducts.length }}
+            </span>
+          </button>
+
+          <button
+            v-for="category in productsStore.categories"
+            :key="category.id"
+            type="button"
+            class="category-pill"
+            :class="{
+              'category-pill--active':
+                activeCategorySlug === category.slug,
+            }"
+            :aria-pressed="activeCategorySlug === category.slug"
+            @click="selectCategory(category.slug)"
+          >
+            <span class="category-thumb">
+              <img
+                v-if="!failedThumbs.has(category.id)"
+                :src="categoryImage(category)"
+                alt=""
+                loading="lazy"
+                @error="failedThumbs.add(category.id)"
+              />
+              <v-icon v-else icon="mdi-shape-outline" size="22" />
+            </span>
+
+            <span class="category-pill-label">{{ category.name }}</span>
+
+            <span class="category-pill-count">
+              {{ categoryCounts.get(category.id) ?? 0 }}
+            </span>
+          </button>
+        </div>
       </section>
 
       <!-- Encabezado de resultados -->
       <section class="results-heading">
         <div class="results-title">
-          <span class="results-eyebrow">
-            EXPLORA NUESTRA TIENDA
-          </span>
-
-          <h2>Explorar productos</h2>
-
-          <p>
-            {{ resultsLabel }}
-            {{ hasActiveFilters ? 'en tu búsqueda' : 'disponibles en el catálogo' }}
-          </p>
+          <h2>{{ resultsTitle }}</h2>
+          <span class="results-count">{{ resultsLabel }}</span>
         </div>
 
         <v-btn
@@ -296,6 +402,50 @@ function clearFilters() {
           class="product-skeleton"
         />
       </div>
+
+      <!-- Subsecciones por categoría (vista "Todos") -->
+      <template
+        v-else-if="!productsStore.error && filteredProducts.length && showSections"
+      >
+        <section
+          v-for="section in categorySections"
+          :key="section.key"
+          class="category-section"
+        >
+          <header class="category-section-header">
+            <span class="category-section-thumb">
+              <img
+                v-if="section.category && !failedThumbs.has(section.key)"
+                :src="categoryImage(section.category)"
+                alt=""
+                loading="lazy"
+                @error="failedThumbs.add(section.key)"
+              />
+              <v-icon v-else icon="mdi-shape-outline" size="20" />
+            </span>
+
+            <div class="category-section-title">
+              <h3>{{ section.name }}</h3>
+              <span>
+                {{ section.products.length }}
+                {{ section.products.length === 1 ? 'producto' : 'productos' }}
+              </span>
+            </div>
+          </header>
+
+          <v-row class="products-list">
+            <v-col
+              v-for="product in section.products"
+              :key="product.id"
+              cols="6"
+              sm="4"
+              md="3"
+            >
+              <ProductCard :product="product" />
+            </v-col>
+          </v-row>
+        </section>
+      </template>
 
       <!-- Productos -->
       <v-row
@@ -367,6 +517,154 @@ function clearFilters() {
 </template>
 
 <style scoped>
+.category-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding-bottom: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.category-pill {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid #d5e3f3;
+  border-radius: 999px;
+  background: #fff;
+  color: #082b58;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.category-pill:hover {
+  border-color: #087df1;
+}
+
+.category-pill:focus-visible {
+  outline: 2px solid #087df1;
+  outline-offset: 2px;
+}
+
+.category-pill--active {
+  border-color: #082b58;
+  background: #082b58;
+  color: #fff;
+}
+
+.category-pill-count {
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #e8f3fe;
+  color: #087df1;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.category-pill--active .category-pill-count {
+  background: #ffbf2e;
+  color: #082b58;
+}
+
+.category-thumb {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  overflow: hidden;
+  border: 2px solid #d5e3f3;
+  border-radius: 50%;
+  background: #e8f3fe;
+  color: #087df1;
+  transition: border-color 0.2s ease;
+}
+
+.category-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.category-pill--active .category-thumb {
+  border-color: #087df1;
+}
+
+@media (max-width: 600px) {
+  .category-bar {
+    gap: 14px;
+    margin: 14px -16px 0;
+    padding: 4px 16px 6px;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .category-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .category-pill {
+    position: relative;
+    flex-direction: column;
+    gap: 6px;
+    width: 68px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    scroll-snap-align: start;
+  }
+
+  .category-thumb {
+    display: flex;
+  }
+
+  .category-pill-label {
+    max-width: 100%;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: normal;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .category-pill--active {
+    background: transparent;
+    color: #087df1;
+  }
+
+  .category-pill-count {
+    position: absolute;
+    top: -2px;
+    right: 0;
+    min-width: 18px;
+    padding: 0 5px;
+    border: 2px solid #fff;
+    background: #082b58;
+    color: #fff;
+    font-size: 10px;
+  }
+
+  .category-pill--active .category-pill-count {
+    background: #087df1;
+    color: #fff;
+  }
+}
 .catalog-page {
   min-height: 75vh;
   padding: 32px 0 80px;
@@ -546,48 +844,101 @@ function clearFilters() {
   background: #f1f7ff;
 }
 
-.clear-button {
-  text-transform: none;
-  min-height: 32px;
-  font-weight: 700;
-  letter-spacing: 0;
-}
+
 
 /* Resultados */
 
 .results-heading {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 22px;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
-.results-eyebrow {
-  color: #087df1;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1.1px;
+.results-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  min-width: 0;
 }
 
 .results-title h2 {
-  margin-top: 4px;
+  margin: 0;
   color: #082b58;
-  font-size: clamp(23px, 2.8vw, 30px);
-  font-weight: 850;
-  letter-spacing: -0.7px;
+  font-size: clamp(18px, 2vw, 22px);
+  font-weight: 800;
+  letter-spacing: -0.4px;
 }
 
-.results-title p {
-  margin-top: 4px;
+.results-count {
   color: #718096;
   font-size: 13px;
+  font-weight: 600;
 }
 
 .add-product-button {
   text-transform: none;
   font-weight: 700;
   letter-spacing: 0;
+}
+
+.category-section {
+  margin-bottom: 32px;
+}
+
+.category-section-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.category-section-thumb {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  overflow: hidden;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #e8f3fe;
+  box-shadow: 0 0 0 2px #ffbf2e;
+  color: #087df1;
+}
+
+.category-section-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.category-section-title {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.category-section-title h3 {
+  margin: 0;
+  overflow: hidden;
+  color: #082b58;
+  font-size: clamp(16px, 2vw, 20px);
+  font-weight: 800;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-section-title span {
+  color: #718096;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .products-list {
@@ -708,16 +1059,14 @@ function clearFilters() {
   }
 
   .results-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
+    gap: 8px;
   }
 
   .results-title h2 {
-    font-size: 23px;
+    font-size: 18px;
   }
 
-  .results-title p {
+  .results-count {
     font-size: 12px;
   }
 

@@ -15,6 +15,30 @@ import {
 } from '@/api/productImages'
 import { getStoreWhatsAppNumber } from '@/api/settings'
 import { buildProductWhatsAppUrl } from '@/lib/whatsapp'
+import { useProductsStore } from '@/stores/products'
+
+const productsStore = useProductsStore()
+
+const category = computed(() =>
+  productsStore.getCategoryById(product.value?.category_id),
+)
+
+const breadcrumbs = computed(() => [
+  { title: 'Inicio', to: '/' },
+  {
+    title: category.value?.name ?? 'Catálogo',
+    to: category.value
+      ? { path: '/catalogo', query: { categoria: category.value.slug } }
+      : '/catalogo',
+  },
+  { title: product.value?.name ?? '', disabled: true },
+])
+
+if (!productsStore.categories.length) {
+  productsStore.fetchCategories().catch((categoriesError) => {
+    console.error('Error cargando categorías:', categoriesError)
+  })
+}
 
 const whatsappNumber = ref<string | null>(null)
 
@@ -228,7 +252,15 @@ watch(
 <template>
   <v-container class="product-detail py-5 py-md-8">
     <!-- Navegación -->
+    <v-breadcrumbs
+      v-if="product"
+      :items="breadcrumbs"
+      density="compact"
+      class="product-breadcrumbs px-0 mb-2"
+    />
+
     <v-btn
+      v-else
       to="/catalogo"
       variant="text"
       color="primary"
@@ -342,6 +374,18 @@ watch(
         <div class="product-information">
           <!-- Disponibilidad pública -->
           <div class="product-badges">
+            <v-chip
+              v-if="category"
+              :to="{ path: '/catalogo', query: { categoria: category.slug } }"
+              color="primary"
+              variant="tonal"
+              size="small"
+              prepend-icon="mdi-shape-outline"
+              class="mr-2"
+            >
+              {{ category.name }}
+            </v-chip>
+
             <v-chip
               :color="product.available ? 'success' : 'error'"
               variant="tonal"
@@ -640,6 +684,20 @@ watch(
 </template>
 
 <style scoped>
+.product-breadcrumbs {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.product-breadcrumbs :deep(.v-breadcrumbs-item--disabled) {
+  color: #082b58;
+  font-weight: 700;
+  opacity: 1;
+}
+
+.product-breadcrumbs :deep(a) {
+  color: #087df1;
+}
 /* Página */
 
 .product-detail {

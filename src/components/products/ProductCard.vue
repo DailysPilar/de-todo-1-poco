@@ -3,10 +3,16 @@
 import { computed, ref, watch } from 'vue'
 import type { DatabaseProduct } from '@/types/databaseProduct'
 import { getProductMainImageUrl } from '@/api/productImages'
+import { useProductsStore } from '@/stores/products'
 
 const props = defineProps<{
   product: DatabaseProduct
 }>()
+
+const productsStore = useProductsStore()
+const category = computed(() =>
+  productsStore.getCategoryById(props.product.category_id),
+)
 
 const imageUrl = ref<string | null>(null)
 
@@ -49,17 +55,17 @@ interface DisplayPrice {
 const prices = computed<DisplayPrice[]>(() => {
   const result: DisplayPrice[] = []
 
-  if (props.product.price_cup !== null) {
-    result.push({
-      value: props.product.price_cup,
-      currency: 'CUP',
-    })
-  }
-
   if (props.product.price_usd !== null) {
     result.push({
       value: props.product.price_usd,
       currency: 'USD',
+    })
+  }
+
+  if (props.product.price_cup !== null) {
+    result.push({
+      value: props.product.price_cup,
+      currency: 'CUP',
     })
   }
 
@@ -102,6 +108,20 @@ const secondaryPrices = computed(() => prices.value.slice(1))
         />
       </div>
 
+      <!-- Disponibilidad -->
+      <div
+        class="availability"
+        :class="{
+          'availability--unavailable': !product.available,
+        }"
+      >
+        <span class="availability-dot" />
+
+        <span>
+          {{ product.available ? 'Disponible' : 'Agotado' }}
+        </span>
+      </div>
+
       <v-chip
         v-if="product.status === 'draft'"
         class="status-chip"
@@ -123,19 +143,14 @@ const secondaryPrices = computed(() => prices.value.slice(1))
 
     <!-- Información -->
     <div class="product-content">
-      <!-- Disponibilidad -->
-      <div
-        class="availability"
-        :class="{
-          'availability--unavailable': !product.available,
-        }"
+      <!-- Categoría -->
+      <span
+        v-if="category"
+        class="category-tag"
+        :title="category.name"
       >
-        <span class="availability-dot" />
-
-        <span>
-          {{ product.available ? 'Disponible' : 'Agotado' }}
-        </span>
-      </div>
+        {{ category.name }}
+      </span>
 
       <!-- Nombre -->
       <h3 class="product-name" :title="product.name">
@@ -159,9 +174,6 @@ const secondaryPrices = computed(() => prices.value.slice(1))
             v-if="secondaryPrices.length"
             class="secondary-prices"
           >
-            <span class="secondary-label">
-              También:
-            </span>
 
             <span
               v-for="price in secondaryPrices"
@@ -258,16 +270,24 @@ const secondaryPrices = computed(() => prices.value.slice(1))
   padding: 16px;
 }
 
-/* Disponibilidad */
+/* Disponibilidad (sobre la foto) */
 
 .availability {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
   display: inline-flex;
   align-items: center;
-  align-self: flex-start;
-  gap: 6px;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 8px rgba(8, 43, 88, 0.12);
   color: #16a34a;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .availability-dot {
@@ -286,6 +306,24 @@ const secondaryPrices = computed(() => prices.value.slice(1))
   background: #ef4444;
 }
 
+/* Categoría */
+
+.category-tag {
+  align-self: flex-start;
+  max-width: 100%;
+  min-width: 0;
+  padding: 3px 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e8f3fe;
+  color: #087df1;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.6;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Nombre */
 
 .product-name {
@@ -300,13 +338,12 @@ const secondaryPrices = computed(() => prices.value.slice(1))
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
-
-  min-height: 42px;
 }
 
 /* Precios */
 
 .price-section {
+  margin-top: auto;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -368,7 +405,7 @@ const secondaryPrices = computed(() => prices.value.slice(1))
   justify-content: center;
   gap: 8px;
   min-height: 42px;
-  margin-top: auto;
+  margin-top: 4px;
   padding: 9px 12px;
   border-radius: 10px;
   background: #082b58;
@@ -385,6 +422,13 @@ const secondaryPrices = computed(() => prices.value.slice(1))
 }
 
 @media (max-width: 600px) {
+  .availability {
+    top: 8px;
+    left: 8px;
+    padding: 2px 7px;
+    font-size: 10px;
+  }
+
   .product-content {
     padding: 12px;
     gap: 8px;
@@ -392,7 +436,6 @@ const secondaryPrices = computed(() => prices.value.slice(1))
 
   .product-name {
     font-size: 13px;
-    min-height: 37px;
   }
 
   .main-price-value {
