@@ -85,6 +85,7 @@ import logo from '@/assets/branding/logo.png'
   );
   box-shadow: 0 16px 40px rgba(16, 45, 96, 0.12);
   padding: 38px 48px;
+  animation: hero-banner-enter 800ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
 .hero-main {
@@ -112,6 +113,7 @@ import logo from '@/assets/branding/logo.png'
   font-size: 12px;
   font-weight: 600;
   margin-bottom: 17px;
+  animation: hero-content-enter 650ms 180ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
 .hero-title {
@@ -121,6 +123,7 @@ import logo from '@/assets/branding/logo.png'
   letter-spacing: -1.3px;
   font-weight: 850;
   max-width: 600px;
+  animation: hero-content-enter 700ms 300ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
 .hero-title span {
@@ -135,6 +138,7 @@ import logo from '@/assets/branding/logo.png'
   line-height: 1.65;
   margin-top: 16px;
   margin-bottom: 0;
+  animation: hero-content-enter 700ms 430ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
 .hero-visual {
@@ -150,6 +154,9 @@ import logo from '@/assets/branding/logo.png'
   display: flex;
   justify-content: center;
   align-items: center;
+  animation:
+    hero-logo-enter 900ms 250ms cubic-bezier(0.16, 1, 0.3, 1) both,
+    hero-logo-float 4s 1.2s ease-in-out infinite;
 }
 
 .hero-logo-glow {
@@ -159,6 +166,7 @@ import logo from '@/assets/branding/logo.png'
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.13);
   filter: blur(30px);
+  animation: hero-glow-pulse 3s 1.2s ease-in-out infinite alternate;
 }
 
 .hero-logo {
@@ -171,6 +179,7 @@ import logo from '@/assets/branding/logo.png'
   position: relative;
   z-index: 2;
   margin-top: 24px;
+  animation: hero-content-enter 700ms 560ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
 .hero-button {
@@ -193,6 +202,7 @@ import logo from '@/assets/branding/logo.png'
   right: -120px;
   top: -180px;
   background: rgba(255, 255, 255, 0.06);
+  animation: hero-decoration-drift 12s ease-in-out infinite alternate;
 }
 
 .hero-decoration-two {
@@ -201,6 +211,76 @@ import logo from '@/assets/branding/logo.png'
   left: 38%;
   bottom: -210px;
   background: rgba(255, 191, 46, 0.07);
+  animation: hero-decoration-drift 15s -3s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes hero-banner-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes hero-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hero-logo-enter {
+  from {
+    opacity: 0;
+    transform: translateX(36px) scale(0.78);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes hero-logo-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+
+  50% {
+    translate: 0 -10px;
+  }
+}
+
+@keyframes hero-glow-pulse {
+  from {
+    opacity: 0.65;
+    scale: 0.9;
+  }
+
+  to {
+    opacity: 1;
+    scale: 1.12;
+  }
+}
+
+@keyframes hero-decoration-drift {
+  from {
+    transform: translate3d(-8px, 6px, 0) scale(0.96);
+  }
+
+  to {
+    transform: translate3d(12px, -10px, 0) scale(1.05);
+  }
 }
 
 @media (max-width: 959px) {
@@ -279,6 +359,19 @@ import logo from '@/assets/branding/logo.png'
 
   .hero-eyebrow {
     font-size: 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-banner,
+  .hero-eyebrow,
+  .hero-title,
+  .hero-description,
+  .hero-logo-wrapper,
+  .hero-logo-glow,
+  .hero-actions,
+  .hero-decoration {
+    animation: none;
   }
 }
 </style>

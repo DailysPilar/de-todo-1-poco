@@ -88,11 +88,13 @@ onMounted(async () => {
 
       <v-row v-else-if="featuredProducts.length">
         <v-col
-          v-for="product in featuredProducts"
+          v-for="(product, index) in featuredProducts"
           :key="product.id"
           cols="6"
           sm="4"
           md="3"
+          class="featured-product"
+          :style="{ animationDelay: `${index * 100}ms` }"
         >
           <ProductCard :product="product" />
         </v-col>
@@ -127,6 +129,35 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+  animation: featured-heading-enter 650ms 100ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
+}
+
+.featured-product {
+  animation: featured-product-enter 700ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes featured-heading-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes featured-product-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .section-heading-text {
@@ -173,6 +204,7 @@ onMounted(async () => {
   background: white;
   border: 1px dashed #dce7f4;
   border-radius: 18px;
+  animation: featured-product-enter 700ms 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .empty-featured h3 {
@@ -215,6 +247,14 @@ onMounted(async () => {
 
   .loading-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section-heading,
+  .featured-product,
+  .empty-featured {
+    animation: none;
   }
 }
 </style>

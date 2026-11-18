@@ -98,13 +98,14 @@ const moreProductImages = [
       <div class="category-grid">
         <!-- Cinco categorías principales -->
         <v-card
-          v-for="category in categories"
+          v-for="(category, index) in categories"
           :key="category.slug"
           :to="{
             path: '/catalogo',
             query: { categoria: category.slug }
           }"
           class="category-card"
+          :style="{ animationDelay: `${index * 90 + 180}ms` }"
           rounded="xl"
           elevation="0"
         >
@@ -144,6 +145,7 @@ const moreProductImages = [
         <v-card
           to="/catalogo"
           class="category-card more-products-card"
+          :style="{ animationDelay: `${categories.length * 90 + 180}ms` }"
           rounded="xl"
           elevation="0"
         >
@@ -208,6 +210,7 @@ const moreProductImages = [
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 18px;
+  animation: category-heading-enter 650ms 120ms cubic-bezier(0.2, 0.75, 0.25, 1) both;
 }
 
 .section-heading-text {
@@ -268,6 +271,31 @@ const moreProductImages = [
     transform 0.25s ease,
     box-shadow 0.25s ease,
     border-color 0.25s ease;
+  animation: category-card-enter 700ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+}
+
+@keyframes category-heading-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes category-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.96);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .category-card:hover {
@@ -479,9 +507,11 @@ const moreProductImages = [
 
 /* Accesibilidad */
 @media (prefers-reduced-motion: reduce) {
+  .section-heading,
   .category-card,
   .category-image,
   .stacked-image {
+    animation: none;
     transition: none;
   }
 }
